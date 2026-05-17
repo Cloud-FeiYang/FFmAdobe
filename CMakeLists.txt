@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.13)
 project(FFmAdobe VERSION 1.0.0 LANGUAGES CXX)
 set(FFMADOBE_SNAPSHOT_VERSION "26w21c")
 
@@ -39,10 +39,16 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 # MSVC specific settings
 # ============================
 if (MSVC)
-    add_compile_options("$<$<CONFIG:RELEASE>:-MD>")
+    add_compile_options("$<$<CONFIG:RELEASE>:-MD;-O2;-Ob2;-Oi;-Ot;-Oy;-GL;-Zc:inline;-Gw>")
     add_compile_options("$<$<CONFIG:DEBUG>:-MDd>")
-    add_link_options("$<$<CONFIG:RELEASE>:-OPT:REF;-OPT:ICF>")
+    add_link_options("$<$<CONFIG:RELEASE>:-OPT:REF;-OPT:ICF;-LTCG>")
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported)
+if(ipo_supported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 endif()
 
 # ============================
