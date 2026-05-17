@@ -1,4 +1,4 @@
-﻿/*******************************************************************/
+/*******************************************************************/
 /*                                                                 */
 /*                      ADOBE CONFIDENTIAL                         */
 /*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
@@ -496,6 +496,18 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   }
   if (outputPathW.empty()) outputPathW = L"output.mp4";
 
+  // ==== Debug: log the output path Premiere gave us ====
+  {
+    wchar_t ad[MAX_PATH] = {};
+    SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
+    std::wstring logPath = std::wstring(ad) + L"\\FFmAdobe\\export_debug.log";
+    FILE* fp = _wfopen(logPath.c_str(), L"a, ccs=UTF-8");
+    if (fp) {
+      fwprintf(fp, L"[FFmAdobe] outputPathW = '%s'\n", outputPathW.c_str());
+      fclose(fp);
+    }
+  }
+
   // ==== Calculate FPS ====
   PrTime ticksPerSecond;
   mySettings->timeSuite->GetTicksPerSecond(&ticksPerSecond);
@@ -585,8 +597,24 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
         std::string va=exJ(jsonBuf,"video_args"), aa=exJ(jsonBuf,"audio_args");
         std::string vf=exJ(jsonBuf,"video_filters"), af=exJ(jsonBuf,"audio_filters");
         std::string ei=exJ(jsonBuf,"extra_input_args");
+        std::string co=exJ(jsonBuf,"container");  // e.g. ".mkv", ".mp4"
         if(!va.empty()) vEncArgs=u2w(va); if(!aa.empty()) aEncArgs=u2w(aa);
         vFilters=u2w(vf); aFilters=u2w(af); extraInputArgs=u2w(ei);
+
+        // Replace output path extension with the container from the preset
+        // Premiere always gives us the extension we registered (mp4), but user
+        // may have chosen a different container in FFmpegFreeUI.
+        if (!co.empty()) {
+          std::wstring wCo = u2w(co);  // e.g. L".mkv"
+          // Ensure it starts with a dot
+          if (!wCo.empty() && wCo[0] != L'.') wCo = L"." + wCo;
+          // Find last dot in outputPathW
+          size_t dotPos = outputPathW.rfind(L'.');
+          if (dotPos != std::wstring::npos)
+            outputPathW = outputPathW.substr(0, dotPos) + wCo;
+          else
+            outputPathW += wCo;
+        }
       }
       CloseHandle(hFile);
     }
@@ -595,7 +623,8 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   std::wstring wW = std::to_wstring(width.value.intValue);
   std::wstring wH = std::to_wstring(height.value.intValue);
   char fpsBuf[32]; snprintf(fpsBuf, sizeof(fpsBuf), "%.6f", fps);
-  std::wstring wFps(std::string(fpsBuf).begin(), std::string(fpsBuf).end());
+  std::string sFps(fpsBuf);
+  std::wstring wFps(sFps.begin(), sFps.end());
 
   std::wstring vfArg = L"vflip";
   if (!vFilters.empty()) vfArg += L"," + vFilters;
@@ -654,21 +683,57 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
          + L" \"" + outputPathW + L"\"";
   }
   // ==== Launch FFmpeg via CreateProcessW for Unicode path support ====
+  // Redirect FFmpeg stderr to a log file for diagnostics
+  wchar_t adPath[MAX_PATH] = {};
+  SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, adPath);
+  std::wstring ffmpegLogPath = std::wstring(adPath) + L"\\FFmAdobe\\ffmpeg_last.log";
+
+  // Write full cmd to debug log (split to avoid fwprintf wchar_t limits)
+  {
+    FILE* fp = _wfopen((std::wstring(adPath) + L"\\FFmAdobe\\export_debug.log").c_str(), L"a, ccs=UTF-8");
+    if (fp) {
+      fwprintf(fp, L"[FFmAdobe] full cmd:\n");
+      // Write in 200-char chunks
+      const wchar_t* p = cmd.c_str();
+      size_t remaining = cmd.size();
+      while (remaining > 0) {
+        size_t chunk = remaining > 200 ? 200 : remaining;
+        fwprintf(fp, L"%.*s", (int)chunk, p);
+        p += chunk; remaining -= chunk;
+      }
+      fwprintf(fp, L"\n");
+      fclose(fp);
+    }
+  }
+
   PROCESS_INFORMATION piProcInfo;
   STARTUPINFOW siStartInfo;
   ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
   ZeroMemory(&siStartInfo, sizeof(STARTUPINFOW));
   siStartInfo.cb = sizeof(STARTUPINFOW);
 
+  // Create stderr log file handle for FFmpeg
+  SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+  HANDLE hFFmpegLog = CreateFileW(ffmpegLogPath.c_str(),
+    GENERIC_WRITE, FILE_SHARE_READ, &sa,
+    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (hFFmpegLog != INVALID_HANDLE_VALUE) {
+    siStartInfo.hStdError  = hFFmpegLog;
+    siStartInfo.hStdOutput = hFFmpegLog;
+    siStartInfo.dwFlags   |= STARTF_USESTDHANDLES;
+  }
+
   std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
   cmdBuf.push_back(0);
 
-  if (!CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, FALSE,
+  if (!CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, TRUE,
                       CREATE_NO_WINDOW, NULL, NULL, &siStartInfo, &piProcInfo)) {
     CloseHandle(hVideoPipe);
     if (hAudioPipe != INVALID_HANDLE_VALUE) CloseHandle(hAudioPipe);
+    if (hFFmpegLog != INVALID_HANDLE_VALUE) CloseHandle(hFFmpegLog);
     return exportReturn_ErrOther;
   }
+  if (hFFmpegLog != INVALID_HANDLE_VALUE) CloseHandle(hFFmpegLog);
 
   // ==== Watchdog: unblocks ConnectNamedPipe if FFmpeg exits early ====
   HANDLE hWatchdogThread = NULL;
@@ -775,6 +840,22 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   mySettings->exportProgressSuite->UpdateProgressPercent(exID, 1.0f);
 
   if (hWatchdogThread) { WaitForSingleObject(hWatchdogThread, 5000); CloseHandle(hWatchdogThread); }
+
+  // ==== Debug: log the ffmpeg command and exit code ====
+  {
+    DWORD exitCode = 0;
+    GetExitCodeProcess(piProcInfo.hProcess, &exitCode);
+    wchar_t ad[MAX_PATH] = {};
+    SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
+    std::wstring logPath = std::wstring(ad) + L"\\FFmAdobe\\export_debug.log";
+    FILE* fp = _wfopen(logPath.c_str(), L"a, ccs=UTF-8");
+    if (fp) {
+      fwprintf(fp, L"[FFmAdobe] cmd = %s\n", cmd.c_str());
+      fwprintf(fp, L"[FFmAdobe] ffmpeg exit code = %lu\n\n", exitCode);
+      fclose(fp);
+    }
+  }
+
   CloseHandle(piProcInfo.hProcess);
   CloseHandle(piProcInfo.hThread);
 
