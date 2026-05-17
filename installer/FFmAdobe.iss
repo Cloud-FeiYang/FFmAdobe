@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define MyAppName      "FFmAdobe"
-#define MyAppVersion   "26w20b"
+#define MyAppVersion   "26w20c"
 #define MyAppPublisher "FFmAdobe Project"
 #define MyAppURL       "https://github.com/Cloud-FeiYang/FFmAdobe"
 
