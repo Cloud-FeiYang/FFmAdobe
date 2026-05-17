@@ -272,28 +272,45 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
     if (strcmp(rec->buttonParamIdentifier, FFMPEGFREEUI_CONFIGURE_BTN) != 0)
         return result;
 
-    // ==== Resolve FFmpegFreeUI.exe path relative to our plugin DLL ====
+    // ==== Resolve FFmpegFreeUI.exe: same-dir first, then registry fallback ====
     std::wstring ffuiExePath;
     {
+        // 1. Check same directory as the plugin DLL
         HMODULE hSelf = NULL;
         GetModuleHandleExW(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             (LPCWSTR)&exSDKParamButton, &hSelf);
         wchar_t dllPath[MAX_PATH] = {};
         GetModuleFileNameW(hSelf, dllPath, MAX_PATH);
-        // Strip filename to get directory
         std::wstring dir(dllPath);
         size_t slash = dir.find_last_of(L"\\/");
-        if (slash != std::wstring::npos)
-            dir = dir.substr(0, slash + 1);
-        ffuiExePath = dir + L"FFmpegFreeUI.exe";
+        if (slash != std::wstring::npos) dir = dir.substr(0, slash + 1);
+        std::wstring sameDir = dir + L"FFmpegFreeUI.exe";
+
+        if (GetFileAttributesW(sameDir.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            ffuiExePath = sameDir;
+        } else {
+            // 2. Read path from registry (written by MSI installer)
+            HKEY hKey = NULL;
+            if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\FFmAdobe", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+                wchar_t regPath[MAX_PATH] = {};
+                DWORD sz = sizeof(regPath);
+                DWORD type = REG_SZ;
+                if (RegQueryValueExW(hKey, L"FFmpegFreeUIPath", NULL, &type, (LPBYTE)regPath, &sz) == ERROR_SUCCESS)
+                    ffuiExePath = regPath;
+                RegCloseKey(hKey);
+            }
+        }
     }
 
-    // Check if FFmpegFreeUI.exe exists next to our plugin
-    if (GetFileAttributesW(ffuiExePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
+    // Verify the resolved path is valid
+    if (ffuiExePath.empty() || GetFileAttributesW(ffuiExePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
         HWND mainWnd = lRec->windowSuite ? lRec->windowSuite->GetMainWindow() : NULL;
-        std::wstring msg = L"FFmpegFreeUI.exe not found at:\n" + ffuiExePath +
-            L"\n\nPlease place FFmpegFreeUI.exe in the same directory as the FFmpegExporter plugin.";
+        std::wstring msg = L"FFmpegFreeUI.exe not found.\n\n"
+            L"Please install FFmpegFreeUI and ensure it is either:\n"
+            L"  \x2022 In the same folder as FFmpegExporter.prm, or\n"
+            L"  \x2022 Installed via the FFmAdobe installer (which configures the path automatically).\n\n"
+            L"Registry key checked: HKLM\\SOFTWARE\\FFmAdobe\\FFmpegFreeUIPath";
         MessageBoxW(mainWnd, msg.c_str(), L"FFmpegFreeUI Not Found", MB_OK | MB_ICONERROR);
         return exportReturn_ErrOther;
     }

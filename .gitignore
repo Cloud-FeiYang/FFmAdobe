@@ -18,3 +18,7 @@ Makefile
 *.vcxproj
 *.vcxproj.filters
 *.sln
+
+installer/staging/
+installer/output/
+installer/*.wixpdb
