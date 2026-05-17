@@ -1,4 +1,4 @@
-﻿/*******************************************************************/
+/*******************************************************************/
 /*                                                                 */
 /*                      ADOBE CONFIDENTIAL                         */
 /*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
@@ -405,6 +405,73 @@ static DWORD WINAPI WatchdogThread(LPVOID param) {
   return 0;
 }
 
+// ==== Pre-export configuration validation ====
+// Runs a fast dummy encode (0.1s of lavfi input) to verify that the user's
+// encoder args and filters are actually supported by the local FFmpeg build.
+// Returns 0 if config is valid, non-zero if FFmpeg rejects it.
+static int ValidateFFmpegConfig(
+    const std::wstring& ffmpegExe,
+    const std::wstring& vEncArgs,
+    const std::wstring& aEncArgs,
+    const std::wstring& vFilters,
+    const std::wstring& aFilters,
+    const std::wstring& extraInputArgs,
+    bool hasAudio)
+{
+  // Build dummy command using lavfi sources to avoid needing real input
+  std::wstring validCmd = ffmpegExe + L" -y";
+  if (!extraInputArgs.empty()) validCmd += L" " + extraInputArgs;
+  validCmd += L" -f lavfi -i color=c=black:s=64x64:d=0.1";
+  if (hasAudio)
+    validCmd += L" -f lavfi -i anullsrc=r=48000:cl=stereo:d=0.1";
+
+  // Apply video filter if present
+  std::wstring vf = L"vflip";
+  if (!vFilters.empty()) vf += L"," + vFilters;
+  validCmd += L" -vf \"" + vf + L"\" " + vEncArgs;
+
+  if (hasAudio) {
+    std::wstring af;
+    if (!aFilters.empty()) af = L" -af \"" + aFilters + L"\"";
+    validCmd += af + L" " + aEncArgs;
+  }
+  validCmd += L" -f null -";  // discard output
+
+  // Write validation log path
+  wchar_t ad[MAX_PATH] = {};
+  SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
+  std::wstring valLogPath = std::wstring(ad) + L"\\FFmAdobe\\ffmpeg_validation.log";
+
+  SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+  HANDLE hLog = CreateFileW(valLogPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                            &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+  PROCESS_INFORMATION pi; STARTUPINFOW si;
+  ZeroMemory(&pi, sizeof(pi)); ZeroMemory(&si, sizeof(si));
+  si.cb = sizeof(si);
+  if (hLog != INVALID_HANDLE_VALUE) {
+    si.hStdError = hLog; si.hStdOutput = hLog;
+    si.dwFlags |= STARTF_USESTDHANDLES;
+  }
+
+  std::vector<wchar_t> cmdBuf(validCmd.begin(), validCmd.end());
+  cmdBuf.push_back(0);
+
+  if (!CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, TRUE,
+                      CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    if (hLog != INVALID_HANDLE_VALUE) CloseHandle(hLog);
+    return -1;  // Can't even start FFmpeg
+  }
+  if (hLog != INVALID_HANDLE_VALUE) CloseHandle(hLog);
+
+  WaitForSingleObject(pi.hProcess, 30000);  // 30s timeout
+  DWORD exitCode = 1;
+  GetExitCodeProcess(pi.hProcess, &exitCode);
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+  return (int)exitCode;
+}
+
 // Audio writer thread context
 struct AudioThreadContext {
   ExportSettings*     settings;
@@ -661,6 +728,47 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     }
   }
   std::wstring ffmpegExe = std::wstring(L"\"") + ffmpegFullPath + L"\"";
+
+  // ==== Validate configuration before starting real export ====
+  {
+    int valResult = ValidateFFmpegConfig(ffmpegExe, vEncArgs, aEncArgs,
+                                         vFilters, aFilters, extraInputArgs, hasAudio);
+    if (valResult != 0) {
+      // Read validation log for specific error message
+      wchar_t ad2[MAX_PATH] = {};
+      SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad2);
+      std::wstring valLogPath = std::wstring(ad2) + L"\\FFmAdobe\\ffmpeg_validation.log";
+      std::wstring detail;
+      HANDLE hVLog = CreateFileW(valLogPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                  NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+      if (hVLog != INVALID_HANDLE_VALUE) {
+        DWORD sz = GetFileSize(hVLog, NULL);
+        if (sz > 0 && sz < 64 * 1024) {
+          std::string buf(sz, '\0'); DWORD rd = 0;
+          ReadFile(hVLog, &buf[0], sz, &rd, NULL);
+          // Extract last meaningful error line
+          size_t ePos = buf.rfind("Error");
+          if (ePos == std::string::npos) ePos = buf.rfind("Unknown encoder");
+          if (ePos != std::string::npos) {
+            size_t eEnd = buf.find('\n', ePos);
+            std::string errLine = buf.substr(ePos, eEnd != std::string::npos ? eEnd - ePos : 80);
+            int wlen = MultiByteToWideChar(CP_UTF8, 0, errLine.c_str(), (int)errLine.size(), NULL, 0);
+            detail.resize(wlen);
+            MultiByteToWideChar(CP_UTF8, 0, errLine.c_str(), (int)errLine.size(), &detail[0], wlen);
+          }
+        }
+        CloseHandle(hVLog);
+      }
+      std::wstring msg = L"FFmAdobe: Export configuration is not supported by your FFmpeg installation.\n\n";
+      if (!detail.empty()) msg += L"FFmpeg reported:\n" + detail + L"\n\n";
+      msg += L"Please open Configure and select an encoder supported by your FFmpeg version.\n";
+      msg += L"(Log saved to: %APPDATA%\\FFmAdobe\\ffmpeg_validation.log)";
+      MessageBoxW(NULL, msg.c_str(), L"FFmAdobe: Invalid Configuration", MB_OK | MB_ICONERROR);
+      CloseHandle(hVideoPipe);
+      if (hAudioPipe != INVALID_HANDLE_VALUE) CloseHandle(hAudioPipe);
+      return 1;
+    }
+  }
 
   std::wstring cmd;
   if (hasAudio) {
