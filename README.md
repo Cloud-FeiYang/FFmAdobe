@@ -138,6 +138,23 @@ git subtree pull --prefix=FFmpegFreeUI ffmpegfreeui main --squash
 git remote add ffmpegfreeui https://github.com/Lake1059/FFmpegFreeUI.git
 ```
 
+## Acknowledgments
+
+This project integrates and depends on the following open-source project:
+
+### [FFmpegFreeUI](https://github.com/Lake1059/FFmpegFreeUI) by [@Lake1059](https://github.com/Lake1059)
+
+> 3FUI 是 FFmpeg 在 Windows 上的轻度专业交互外壳，收录大量参数，界面美观，交互友好。此项目面向国内使用环境，让普通人也能够轻松压制视频和转换格式。
+
+FFmpegFreeUI 为本项目提供了编码参数配置前端和预设管理能力。本仓库通过 `git subtree` 集成了 FFmpegFreeUI 的完整源码，**未对其进行任何修改**，所有适配代码均位于 `src/PremierePresetConverter/` 目录中。
+
+- **许可证**: [MIT License](https://github.com/Lake1059/FFmpegFreeUI/blob/main/LICENSE.txt)
+- **仓库地址**: https://github.com/Lake1059/FFmpegFreeUI
+
+感谢 Lake1059 开发了如此优秀的 FFmpeg 前端工具！
+
 ## License
 
-MIT
+MIT — 详见 [LICENSE](LICENSE)
+
+本项目包含的 FFmpegFreeUI 组件同样采用 MIT 许可证。
