@@ -1,4 +1,4 @@
-﻿#include "FFmAdobe_Params.h"
+#include "FFmAdobe_Params.h"
 #include <windows.h>
 #include <shlobj.h>
 #include <commdlg.h>
@@ -327,8 +327,19 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
                 L"Launch Failed", MB_OK | MB_ICONERROR);
             return exportReturn_ErrOther;
         }
-        // Wait for user to configure and save
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        // Wait for FFmpegFreeUI to exit while pumping messages
+        // (blocking the UI thread with WaitForSingleObject causes Premiere to crash)
+        for (;;) {
+            DWORD wr = MsgWaitForMultipleObjects(1, &pi.hProcess, FALSE, INFINITE, QS_ALLINPUT);
+            if (wr == WAIT_OBJECT_0) break;          // process exited
+            if (wr == WAIT_OBJECT_0 + 1) {            // messages pending
+                MSG msg;
+                while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            } else break;                             // error
+        }
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     }
