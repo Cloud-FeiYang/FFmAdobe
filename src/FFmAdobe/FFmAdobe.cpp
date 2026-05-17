@@ -43,8 +43,8 @@
    zal			3/3/2008
 */
 
-#include "FFmpegExporter.h"
-#include "FFmpegExporter_Params.h"
+#include "FFmAdobe.h"
+#include "FFmAdobe_Params.h"
 
 #include <windows.h>
 #include <shlobj.h>
@@ -123,7 +123,7 @@ prMALError exSDKStartup(exportStdParms *stdParmsP,
   prMALError result = malNoError;
 
   infoRecP->fileType = '3FUI';
-  copyConvertStringLiteralIntoUTF16(L"FFmpeg Exporter (via 3FUI)", infoRecP->fileTypeName);
+  copyConvertStringLiteralIntoUTF16(L"FFmAdobe (26w20a)", infoRecP->fileTypeName);
   copyConvertStringLiteralIntoUTF16(L"mp4", infoRecP->fileTypeDefaultExtension);
 
   infoRecP->classID = 'FFEX';
@@ -376,7 +376,7 @@ exSDKFileExtension(exportStdParms *stdParmsP,
 
 prMALError RenderAndWriteAllVideo(exDoExportRec *exportInfoP, float progress,
                                   float videoProgress, PrTime *exportDuration) {
-  // Stub 闁?not used in FFmpeg pipe mode
+  // Stub 闂?not used in FFmpeg pipe mode
   return malNoError;
 }
 

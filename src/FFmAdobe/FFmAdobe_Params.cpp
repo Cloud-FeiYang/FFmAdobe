@@ -1,4 +1,4 @@
-#include "FFmpegExporter_Params.h"
+#include "FFmAdobe_Params.h"
 #include <windows.h>
 #include <shlobj.h>
 #include <commdlg.h>
@@ -309,7 +309,7 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
         MessageBoxW(mainWnd,
             L"FFmpegFreeUI.exe not found.\n\n"
             L"Please install FFmpegFreeUI via the FFmAdobe installer,\n"
-            L"or place it in the same folder as FFmpegExporter.prm.",
+            L"or place it in the same folder as FFmAdobe.prm.",
             L"FFmpegFreeUI Not Found", MB_OK | MB_ICONERROR);
         return exportReturn_ErrOther;
     }

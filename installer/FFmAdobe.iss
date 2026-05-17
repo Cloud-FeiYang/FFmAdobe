@@ -8,7 +8,7 @@
 ; ============================================================
 
 #define MyAppName      "FFmAdobe"
-#define MyAppVersion   "1.0.0"
+#define MyAppVersion   "26w20a"
 #define MyAppPublisher "FFmAdobe Project"
 #define MyAppURL       "https://github.com/FFmAdobe"
 
@@ -74,7 +74,7 @@ Name: "{app}\FFmpegFreeUI"; Components: ffui
 ; ============================================================
 [Files]
 ; --- Plugin files → Adobe MediaCore directory ---
-Source: "staging\Plugin\FFmpegExporter.prm";          DestDir: "{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe"; Flags: ignoreversion; Components: plugin
+Source: "staging\Plugin\FFmAdobe.prm";              DestDir: "{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe"; Flags: ignoreversion; Components: plugin
 Source: "staging\Plugin\PremierePresetConverter.exe";  DestDir: "{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe"; Flags: ignoreversion; Components: converter
 
 ; --- FFmpegFreeUI files → {app}\FFmpegFreeUI ---

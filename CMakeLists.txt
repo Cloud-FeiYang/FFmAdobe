@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 project(FFmAdobe VERSION 1.0.0 LANGUAGES CXX)
+set(FFMADOBE_SNAPSHOT_VERSION "26w20a")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,11 +52,11 @@ configure_file("src/configure.h.in" "${PROJECT_BINARY_DIR}/configure/configure.h
 include_directories("${PROJECT_BINARY_DIR}/configure")
 
 # ============================
-# Build FFmpegExporter plugin
+# Build FFmAdobe plugin
 # ============================
-add_subdirectory("src/FFmpegExporter")
-set_target_properties(FFmpegExporter PROPERTIES SUFFIX ".prm")
+add_subdirectory("src/FFmAdobe")
+set_target_properties(FFmAdobe PROPERTIES SUFFIX ".prm")
 
 if (MSVC)
-    set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY VS_STARTUP_PROJECT FFmpegExporter)
+    set_property(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" PROPERTY VS_STARTUP_PROJECT FFmAdobe)
 endif()

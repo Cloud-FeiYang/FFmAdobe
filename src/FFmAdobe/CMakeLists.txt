@@ -1,16 +1,16 @@
-set(LIBRARY_NAME "FFmpegExporter")
+set(LIBRARY_NAME "FFmAdobe")
 
 # ============================
 # Source Files
 # ============================
 set(Source_Files
-    "FFmpegExporter.cpp"
-    "FFmpegExporter_Params.cpp"
+    "FFmAdobe.cpp"
+    "FFmAdobe_Params.cpp"
 )
 
 set(Header_Files
-    "FFmpegExporter.h"
-    "FFmpegExporter_Params.h"
+    "FFmAdobe.h"
+    "FFmAdobe_Params.h"
 )
 
 set(Utility_Files
@@ -20,7 +20,7 @@ set(Utility_Files
     "${ADOBE_PP_SDK}/Examples/Utils/SDK_Segment_Utils.h"
 )
 
-set(Resource_Files "FFmpegExporter.rc")
+set(Resource_Files "FFmAdobe.rc")
 
 source_group("Source Files"           FILES ${Source_Files})
 source_group("Header Files"           FILES ${Header_Files})
