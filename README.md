@@ -70,19 +70,45 @@ If no preset is configured, defaults to: `H.264 CRF 18 fast + AAC 320kbps`.
 ```
 FFmAdobe/
 ├── CMakeLists.txt                    # Root build configuration
-├── src/
-│   ├── configure.h.in                # Build config template
-│   └── FFmpegExporter/
-│       ├── CMakeLists.txt            # Plugin build target
-│       ├── FFmpegExporter.cpp        # Main export logic (pipe architecture)
-│       ├── FFmpegExporter.h          # Plugin entry point declarations
-│       ├── FFmpegExporter_Params.cpp # UI parameters & FFmpegFreeUI launcher
-│       ├── FFmpegExporter_Params.h   # Parameter IDs and string definitions
-│       ├── FFmpegExporter.rc         # Windows resource file
-│       └── FFmpegExporter_export.h   # DLL export macros (auto-generated)
-└── README.md
+├── README.md
+├── FFmpegFreeUI/                     # ← git subtree from upstream
+│   ├── FFmpegFreeUI.exe              #   (pre-built UI tool)
+│   ├── ...                           #   (full upstream source)
+│   └── README.md
+└── src/
+    ├── configure.h.in                # Build config template
+    └── FFmpegExporter/
+        ├── CMakeLists.txt            # Plugin build target
+        ├── FFmpegExporter.cpp        # Main export logic (pipe architecture)
+        ├── FFmpegExporter.h          # Plugin entry point declarations
+        ├── FFmpegExporter_Params.cpp # UI parameters & FFmpegFreeUI launcher
+        ├── FFmpegExporter_Params.h   # Parameter IDs and string definitions
+        ├── FFmpegExporter.rc         # Windows resource file
+        └── FFmpegExporter_export.h   # DLL export macros (auto-generated)
+```
+
+## Syncing FFmpegFreeUI Upstream
+
+The `FFmpegFreeUI/` directory is managed via **git subtree** (upstream: `https://github.com/Lake1059/FFmpegFreeUI.git`).
+
+### Pull latest changes from upstream
+
+```powershell
+git subtree pull --prefix=FFmpegFreeUI ffmpegfreeui main --squash
+```
+
+> If the `ffmpegfreeui` remote is not yet configured in your clone:
+> ```powershell
+> git remote add ffmpegfreeui https://github.com/Lake1059/FFmpegFreeUI.git
+> ```
+
+### Push local changes back to upstream (if you have write access)
+
+```powershell
+git subtree push --prefix=FFmpegFreeUI ffmpegfreeui main
 ```
 
 ## License
 
 MIT
+
