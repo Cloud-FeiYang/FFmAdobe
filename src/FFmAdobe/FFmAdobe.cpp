@@ -1,4 +1,4 @@
-/*******************************************************************/
+﻿/*******************************************************************/
 /*                                                                 */
 /*                      ADOBE CONFIDENTIAL                         */
 /*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
@@ -534,7 +534,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     if (presetPath.empty()) {
       wchar_t ad[MAX_PATH];
       SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
-      presetPath = std::wstring(ad) + L"\\FFmAdobe\\premiere_preset.json";
+      presetPath = std::wstring(ad) + L"\\FFmAdobe\\premiere_preset_simplified.json";
     }
   }
 

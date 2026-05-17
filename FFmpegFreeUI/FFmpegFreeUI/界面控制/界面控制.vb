@@ -9,8 +9,10 @@ Public Class 界面控制
 
         Form1.设置页面.初始化设置操作响应()
 
-        编码队列右键菜单.初始化()
-        编码队列管理选项.初始化()
+        If Not Form1.PremiereMode Then
+            编码队列右键菜单.初始化()
+            编码队列管理选项.初始化()
+        End If
 
         设置富文本框行高(Form1.RichTextBox2, 300)
 
@@ -34,6 +36,7 @@ Public Class 界面控制
 
         暗黑列表视图自绘制.绑定列表视图事件(Form1.ListView1)
 
+        If Not Form1.PremiereMode Then ' === 编码队列事件绑定（Premiere模式跳过） ===
         AddHandler Form1.UiButton开始任务.Click, AddressOf 界面控制_编码队列.开始任务
         AddHandler Form1.UiButton暂停任务.Click, AddressOf 界面控制_编码队列.暂停任务
         AddHandler Form1.UiButton恢复任务.Click, AddressOf 界面控制_编码队列.恢复任务
@@ -58,6 +61,7 @@ Public Class 界面控制
                                                         End Sub
         AddHandler Form1.UiButton复制输出.Click, Sub() Clipboard.SetText(Form1.RichTextBox2.Text)
         AddHandler Form1.UiComboBox输出显示类型.SelectedIndexChanged, AddressOf 编码任务.切换输出类型时单独刷新
+        End If ' === 编码队列事件绑定结束 ===
 
         AddHandler Form1.选中项刷新信息计时器.Tick, AddressOf 编码任务.选中项刷新信息
         AddHandler Form1.任务进度更新计时器.Tick, AddressOf 编码任务.用定时器刷新到界面上

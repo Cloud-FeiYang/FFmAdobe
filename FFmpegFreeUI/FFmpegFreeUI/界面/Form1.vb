@@ -3,6 +3,8 @@ Imports Sunny.UI
 
 Public Class Form1
     Public Shared Property DPI As Single = Form1.CreateGraphics.DpiX / 96
+    Public Shared Property PremiereMode As Boolean = False
+    Public Shared Property PremiereMode已保存 As Boolean = False
 
     Public 是否初始化 As Boolean = False
     Private 上一次窗口状态 As FormWindowState
@@ -46,6 +48,12 @@ Public Class Form1
         界面控制.界面校准()
         编码任务.初始化()
         If DPI <> 1 Then DPI变动时校准界面()
+
+        ' === Premiere Mode ===
+        If Environment.GetCommandLineArgs().Any(Function(a) a.Equals("--premiere", StringComparison.OrdinalIgnoreCase)) Then
+            PremiereMode = True
+            进入Premiere模式()
+        End If
 
         上一次窗口状态 = Me.WindowState
     End Sub
@@ -228,4 +236,30 @@ Public Class Form1
         End Try
     End Sub
 
+    Public Sub 进入Premiere模式()
+        Me.Text = "FFmAdobe 参数配置"
+        ' 隐藏无关Tab，只保留参数面板和设置
+        Dim 要隐藏的Tabs As New List(Of TabPage) From {
+            TabPage起始页面, TabPage编码队列, TabPage准备文件,
+            TabPage媒体信息, TabPage播放器, TabPage画质评测,
+            TabPage混流, TabPage合并, TabPage性能监控,
+            TabPage插件扩展, TabPage支持者名单
+        }
+        For Each tp In 要隐藏的Tabs
+            If UiTabControlMenu1.TabPages.Contains(tp) Then UiTabControlMenu1.TabPages.Remove(tp)
+        Next
+        ' 默认选中参数面板
+        UiTabControlMenu1.SelectedTab = TabPage参数面板
+        ' 禁用文件拖放到编码队列
+        ListView1.AllowDrop = False
+        ' 加载上次的预设（如果存在）
+        Dim presetPath = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FFmAdobe", "premiere_preset.json")
+        If IO.File.Exists(presetPath) Then
+            Try
+                Dim a = System.Text.Json.JsonSerializer.Deserialize(Of 预设数据类型)(IO.File.ReadAllText(presetPath))
+                预设管理.显示预设(a, 常规流程参数页面)
+            Catch ex As Exception
+            End Try
+        End If
+    End Sub
 End Class

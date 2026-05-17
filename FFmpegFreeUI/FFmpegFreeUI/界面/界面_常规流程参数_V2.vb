@@ -125,8 +125,14 @@ Public Class 界面_常规流程参数_V2
         AddHandler UiButton刷新预设列表.Click, AddressOf 刷新预设列表
         AddHandler UiButton保存预设.Click, AddressOf 保存到预设
         AddHandler UiButton读取预设.Click, AddressOf 加载选中预设
-        AddHandler UiButton导出预设.Click, AddressOf 保存预设到文件
-        AddHandler UiButton导入预设.Click, AddressOf 从文件读取预设
+        If Form1.PremiereMode Then
+            UiButton导出预设.Text = "保存并退出"
+            AddHandler UiButton导出预设.Click, AddressOf PremiereMode保存并退出
+            UiButton导入预设.Visible = False
+        Else
+            AddHandler UiButton导出预设.Click, AddressOf 保存预设到文件
+            AddHandler UiButton导入预设.Click, AddressOf 从文件读取预设
+        End If
 
         AddHandler ListView2.SelectedIndexChanged, AddressOf 预设列表视图选中变化事件
         AddHandler ListView2.DoubleClick, AddressOf 加载选中预设
@@ -906,4 +912,28 @@ Public Class 界面_常规流程参数_V2
         End If
     End Sub
 
+    ''' <summary>
+    ''' Premiere模式：保存当前参数到固定路径并退出
+    ''' </summary>
+    Public Sub PremiereMode保存并退出()
+        Try
+            Dim dir = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FFmAdobe")
+            If Not IO.Directory.Exists(dir) Then IO.Directory.CreateDirectory(dir)
+            Dim presetPath = IO.Path.Combine(dir, "premiere_preset.json")
+            Dim a As New 预设数据类型
+            预设管理.储存预设(a, Me)
+            IO.File.WriteAllText(presetPath, System.Text.Json.JsonSerializer.Serialize(a, JsonSO))
+            Form1.PremiereMode已保存 = True
+            Sunny.UI.UIMessageTip.ShowOk("参数已保存", 1000, False)
+            ' 短暂延迟后关闭窗口让用户看到提示
+            Dim t As New Timer With {.Interval = 500}
+            AddHandler t.Tick, Sub()
+                                  t.Stop()
+                                  Form1.Close()
+                              End Sub
+            t.Start()
+        Catch ex As Exception
+            MsgBox("保存失败：" & ex.Message, MsgBoxStyle.Critical)
+        End Try
+    End Sub
 End Class
