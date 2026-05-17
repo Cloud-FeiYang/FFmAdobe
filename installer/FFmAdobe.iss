@@ -1,4 +1,4 @@
-; ============================================================
+﻿; ============================================================
 ; FFmAdobe Installer - Inno Setup Script
 ; ============================================================
 ; New install:  Welcome → Components → Plugin Path → FFUI Path → Ready
@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define MyAppName      "FFmAdobe"
-#define MyAppVersion   "26w20e"
+#define MyAppVersion   "26w21a"
 #define MyAppPublisher "FFmAdobe Project"
 #define MyAppURL       "https://github.com/Cloud-FeiYang/FFmAdobe"
 
