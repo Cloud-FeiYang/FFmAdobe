@@ -1,0 +1,725 @@
+﻿/*******************************************************************/
+/*                                                                 */
+/*                      ADOBE CONFIDENTIAL                         */
+/*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
+/*                                                                 */
+/* Copyright 1992-2008 Adobe Systems Incorporated                  */
+/* All Rights Reserved.                                            */
+/*                                                                 */
+/* NOTICE:  All information contained herein is, and remains the   */
+/* property of Adobe Systems Incorporated and its suppliers, if    */
+/* any.  The intellectual and technical concepts contained         */
+/* herein are proprietary to Adobe Systems Incorporated and its    */
+/* suppliers and may be covered by U.S. and Foreign Patents,       */
+/* patents in process, and are protected by trade secret or        */
+/* copyright law.  Dissemination of this information or            */
+/* reproduction of this material is strictly forbidden unless      */
+/* prior written permission is obtained from Adobe Systems         */
+/* Incorporated.                                                   */
+/*                                                                 */
+/*******************************************************************/
+/*
+        Revision History
+
+        Version		Change
+   Engineer	Date
+        =======		======
+   ========	====== 1.0			created
+   eks			10/11/1999 1.1			Added note on supporting
+   multiple			bbb			6/14/2000 audioRate in
+   compGetAudioIndFormat 1.2			Converted to C++, imposed coding
+   guidelines	bbb			10/22/2001 fixed a supervision logic bug
+   or two... 1.3			Updated for Adobe Premiere 6.5
+   bbb			5/21/2002 1.4			Fixed work area export
+   zal			1/20/2003 1.5			Updated for Adobe
+   Premiere Pro 1.0			zal			2/28/2003 1.6
+   Fixed row padding problem					zal
+   8/11/2003 2.0			Added audio support for Premiere Pro,
+   zal			1/6/2004 arbitrary audio sample rates, multi-channel
+   audio, pixel aspect ratio, and fields; code cleanup 2.5
+   Updated for Adobe Premiere Pro 2.0,			zal
+   3/10/2006 code cleanup 3.0			High-bit video support (v410)
+   zal			6/20/2006 4.0			Ported to new export API
+   zal			3/3/2008
+*/
+
+#include "FFmpegExporter.h"
+#include "FFmpegExporter_Params.h"
+
+#include <windows.h>
+#include <string>
+#include <vector>
+
+DllExport PREMPLUGENTRY xSDKExport(csSDK_int32 selector,
+                                   exportStdParms *stdParmsP, void *param1,
+                                   void *param2) {
+  prMALError result = exportReturn_Unsupported;
+
+  switch (selector) {
+  case exSelStartup:
+    result =
+        exSDKStartup(stdParmsP, reinterpret_cast<exExporterInfoRec *>(param1));
+    break;
+
+  case exSelBeginInstance:
+    result = exSDKBeginInstance(
+        stdParmsP, reinterpret_cast<exExporterInstanceRec *>(param1));
+    break;
+
+  case exSelEndInstance:
+    result = exSDKEndInstance(
+        stdParmsP, reinterpret_cast<exExporterInstanceRec *>(param1));
+    break;
+
+  case exSelGenerateDefaultParams:
+    result = exSDKGenerateDefaultParams(
+        stdParmsP, reinterpret_cast<exGenerateDefaultParamRec *>(param1));
+    break;
+
+  case exSelPostProcessParams:
+    result = exSDKPostProcessParams(
+        stdParmsP, reinterpret_cast<exPostProcessParamsRec *>(param1));
+    break;
+
+  case exSelGetParamSummary:
+    result = exSDKGetParamSummary(
+        stdParmsP, reinterpret_cast<exParamSummaryRec *>(param1));
+    break;
+
+  case exSelQueryOutputSettings:
+    result = exSDKQueryOutputSettings(
+        stdParmsP, reinterpret_cast<exQueryOutputSettingsRec *>(param1));
+    break;
+
+  case exSelQueryExportFileExtension:
+    result = exSDKFileExtension(
+        stdParmsP, reinterpret_cast<exQueryExportFileExtensionRec *>(param1));
+    break;
+
+  case exSelParamButton:
+    result = exSDKParamButton(stdParmsP,
+                              reinterpret_cast<exParamButtonRec *>(param1));
+    break;
+
+  case exSelValidateParamChanged:
+    result = exSDKValidateParamChanged(
+        stdParmsP, reinterpret_cast<exParamChangedRec *>(param1));
+    break;
+
+  case exSelValidateOutputSettings:
+    result = malNoError;
+    break;
+
+  case exSelExport:
+    result = exSDKExport(stdParmsP, reinterpret_cast<exDoExportRec *>(param1));
+    break;
+  }
+  return result;
+}
+
+prMALError exSDKStartup(exportStdParms *stdParmsP,
+                        exExporterInfoRec *infoRecP) {
+  prMALError result = malNoError;
+
+  infoRecP->fileType = '3FUI';
+  copyConvertStringLiteralIntoUTF16(L"FFmpeg Exporter (via 3FUI)", infoRecP->fileTypeName);
+  copyConvertStringLiteralIntoUTF16(L"mp4", infoRecP->fileTypeDefaultExtension);
+
+  infoRecP->classID = 'FFEX';
+  infoRecP->exportReqIndex = 0; // Set this to exportReturn_IterateExporter to
+                                // support multiple file types
+  infoRecP->wantsNoProgressBar =
+      kPrFalse; // Let Premiere provide the progress bar
+  infoRecP->hideInUI = kPrFalse;
+  infoRecP->doesNotSupportAudioOnly = kPrFalse; // Sure we support audio-only
+  infoRecP->canConformToMatchParams = kPrTrue;
+  infoRecP->canExportVideo = kPrTrue; // Can compile Video, enables the Video
+                                      // checkbox in File > Export > Movie
+  infoRecP->canExportAudio = kPrTrue; // Can compile Audio, enables the Audio
+                                      // checkbox in File > Export > Movie
+
+  // Tell Premiere which headers the exporter was compiled with
+  infoRecP->interfaceVersion = EXPORTMOD_VERSION;
+
+  return result;
+}
+
+prMALError exSDKBeginInstance(exportStdParms *stdParmsP,
+                              exExporterInstanceRec *instanceRecP) {
+  prMALError result = malNoError;
+  SPErr spError = kSPNoError;
+  ExportSettings *mySettings;
+  PrSDKMemoryManagerSuite *memorySuite;
+  csSDK_int32 exportSettingsSize = sizeof(ExportSettings);
+  SPBasicSuite *spBasic = stdParmsP->getSPBasicSuite();
+  if (spBasic != NULL) {
+    spError = spBasic->AcquireSuite(
+        kPrSDKMemoryManagerSuite, kPrSDKMemoryManagerSuiteVersion,
+        const_cast<const void **>(reinterpret_cast<void **>(&memorySuite)));
+    mySettings = reinterpret_cast<ExportSettings *>(
+        memorySuite->NewPtrClear(exportSettingsSize));
+
+    if (mySettings) {
+      mySettings->spBasic = spBasic;
+      mySettings->memorySuite = memorySuite;
+      spError = spBasic->AcquireSuite(
+          kPrSDKExportParamSuite, kPrSDKExportParamSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->exportParamSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKExportProgressSuite, kPrSDKExportProgressSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->exportProgressSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKExportFileSuite, kPrSDKExportFileSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->exportFileSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKExportInfoSuite, kPrSDKExportInfoSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->exportInfoSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKErrorSuite, kPrSDKErrorSuiteVersion3,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->errorSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKClipRenderSuite, kPrSDKClipRenderSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->clipRenderSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKMarkerSuite, kPrSDKMarkerSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->markerSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKPPixSuite, kPrSDKPPixSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->ppixSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKSequenceAudioSuite, kPrSDKSequenceAudioSuiteVersion1,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->sequenceAudioSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKSequenceRenderSuite, kPrSDKSequenceRenderSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->sequenceRenderSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKTimeSuite, kPrSDKTimeSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->timeSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKWindowSuite, kPrSDKWindowSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->windowSuite))));
+      spError = spBasic->AcquireSuite(
+          kPrSDKApplicationSettingsSuite, kPrSDKApplicationSettingsSuiteVersion,
+          const_cast<const void **>(
+              reinterpret_cast<void **>(&(mySettings->appSettingsSuite))));
+    }
+
+    mySettings->SDKFileRec.width = 0;
+    mySettings->SDKFileRec.height = 0;
+
+    instanceRecP->privateData = reinterpret_cast<void *>(mySettings);
+  } else {
+    result = exportReturn_ErrMemory;
+  }
+  return result;
+}
+
+prMALError exSDKEndInstance(exportStdParms *stdParmsP,
+                            exExporterInstanceRec *instanceRecP) {
+  prMALError result = malNoError;
+  ExportSettings *lRec =
+      reinterpret_cast<ExportSettings *>(instanceRecP->privateData);
+  SPBasicSuite *spBasic = stdParmsP->getSPBasicSuite();
+  PrSDKMemoryManagerSuite *memorySuite;
+  if (spBasic != NULL && lRec != NULL) {
+    if (lRec->exportParamSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKExportParamSuite,
+                                     kPrSDKExportParamSuiteVersion);
+    }
+    if (lRec->exportProgressSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKExportProgressSuite,
+                                     kPrSDKExportProgressSuiteVersion);
+    }
+    if (lRec->exportFileSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKExportFileSuite,
+                                     kPrSDKExportFileSuiteVersion);
+    }
+    if (lRec->exportInfoSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKExportInfoSuite,
+                                     kPrSDKExportInfoSuiteVersion);
+    }
+    if (lRec->errorSuite) {
+      result =
+          spBasic->ReleaseSuite(kPrSDKErrorSuite, kPrSDKErrorSuiteVersion3);
+    }
+    if (lRec->clipRenderSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKClipRenderSuite,
+                                     kPrSDKClipRenderSuiteVersion);
+    }
+    if (lRec->markerSuite) {
+      result =
+          spBasic->ReleaseSuite(kPrSDKMarkerSuite, kPrSDKMarkerSuiteVersion);
+    }
+    if (lRec->ppixSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKPPixSuite, kPrSDKPPixSuiteVersion);
+    }
+    if (lRec->sequenceAudioSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKSequenceAudioSuite,
+                                     kPrSDKSequenceAudioSuiteVersion1);
+    }
+    if (lRec->sequenceRenderSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKSequenceRenderSuite,
+                                     kPrSDKSequenceRenderSuiteVersion);
+    }
+    if (lRec->timeSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKTimeSuite, kPrSDKTimeSuiteVersion);
+    }
+    if (lRec->windowSuite) {
+      result =
+          spBasic->ReleaseSuite(kPrSDKWindowSuite, kPrSDKWindowSuiteVersion);
+    }
+    if (lRec->appSettingsSuite) {
+      result = spBasic->ReleaseSuite(kPrSDKApplicationSettingsSuite,
+                                     kPrSDKApplicationSettingsSuiteVersion);
+    }
+    if (lRec->memorySuite) {
+      memorySuite = lRec->memorySuite;
+      memorySuite->PrDisposePtr(reinterpret_cast<PrMemoryPtr>(lRec));
+      result = spBasic->ReleaseSuite(kPrSDKMemoryManagerSuite,
+                                     kPrSDKMemoryManagerSuiteVersion);
+    }
+  }
+
+  return result;
+}
+
+// This selector is necessary so that the AME UI can provide a preview
+// The bitrate value is used to provide the Estimated File Size
+prMALError exSDKQueryOutputSettings(exportStdParms *stdParmsP,
+                                    exQueryOutputSettingsRec *outputSettingsP) {
+  prMALError result = malNoError;
+  csSDK_uint32 exID = outputSettingsP->exporterPluginID;
+  exParamValues width, height, frameRate, pixelAspectRatio, fieldType, codec,
+      sampleRate, channelType;
+  ExportSettings *privateData =
+      reinterpret_cast<ExportSettings *>(outputSettingsP->privateData);
+  PrSDKExportParamSuite *paramSuite = privateData->exportParamSuite;
+  csSDK_int32 mgroupIndex = 0;
+  float fps = 0.0f;
+
+  if (outputSettingsP->inExportVideo) {
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEVideoWidth, &width);
+    outputSettingsP->outVideoWidth = width.value.intValue;
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEVideoHeight, &height);
+    outputSettingsP->outVideoHeight = height.value.intValue;
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEVideoFPS, &frameRate);
+    outputSettingsP->outVideoFrameRate = frameRate.value.timeValue;
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEVideoAspect,
+                              &pixelAspectRatio);
+    outputSettingsP->outVideoAspectNum =
+        pixelAspectRatio.value.ratioValue.numerator;
+    outputSettingsP->outVideoAspectDen =
+        pixelAspectRatio.value.ratioValue.denominator;
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEVideoFieldType,
+                              &fieldType);
+    outputSettingsP->outVideoFieldType = fieldType.value.intValue;
+  }
+  if (outputSettingsP->inExportAudio) {
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEAudioRatePerSecond,
+                              &sampleRate);
+    outputSettingsP->outAudioSampleRate = sampleRate.value.floatValue;
+    outputSettingsP->outAudioSampleType = kPrAudioSampleType_32BitFloat;
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEAudioNumChannels,
+                              &channelType);
+    outputSettingsP->outAudioChannelType =
+        (PrAudioChannelType)channelType.value.intValue;
+  }
+
+  // Calculate bitrate
+  PrTime ticksPerSecond = 0;
+  csSDK_uint32 videoBitrate = 0, audioBitrate = 0;
+  if (outputSettingsP->inExportVideo) {
+    privateData->timeSuite->GetTicksPerSecond(&ticksPerSecond);
+    fps = static_cast<float>(ticksPerSecond) / frameRate.value.timeValue;
+    paramSuite->GetParamValue(exID, mgroupIndex, ADBEVideoCodec, &codec);
+    videoBitrate = static_cast<csSDK_uint32>(
+        width.value.intValue * height.value.intValue *
+        GetPixelFormatSize(codec.value.intValue) * fps);
+  }
+  if (outputSettingsP->inExportAudio) {
+    audioBitrate = static_cast<csSDK_uint32>(
+        sampleRate.value.floatValue * 4 *
+        GetNumberOfAudioChannels(outputSettingsP->outAudioChannelType));
+  }
+  outputSettingsP->outBitratePerSecond = videoBitrate + audioBitrate;
+
+  // New in CS5 - return outBitratePerSecond in kbps
+  outputSettingsP->outBitratePerSecond =
+      outputSettingsP->outBitratePerSecond * 8 / 1000;
+
+  return result;
+}
+
+// If an exporter supports various file extensions, it would specify which one
+// to use here
+prMALError
+exSDKFileExtension(exportStdParms *stdParmsP,
+                   exQueryExportFileExtensionRec *exportFileExtensionRecP) {
+  prMALError result = malNoError;
+  copyConvertStringLiteralIntoUTF16(L"mp4",
+                                    exportFileExtensionRecP->outFileExtension);
+  return result;
+}
+
+prMALError RenderAndWriteAllVideo(exDoExportRec *exportInfoP, float progress,
+                                  float videoProgress, PrTime *exportDuration) {
+  // Stub 閳?not used in FFmpeg pipe mode
+  return malNoError;
+}
+
+// Helper: wide path to std::wstring (no conversion needed, just copy)
+static std::wstring PrPathToWString(const prUTF16Char* wstr, csSDK_int32 len) {
+  if (!wstr || len <= 0) return L"";
+  return std::wstring(wstr, wstr + len - 1); // len includes null terminator
+}
+
+// Audio writer thread context
+struct AudioThreadContext {
+  ExportSettings*     settings;
+  csSDK_uint32        exID;
+  PrTime              startTime;
+  PrTime              exportDuration;
+  PrTime              ticksPerSecond;
+  PrTime              ticksPerFrame;
+  int                 channelTypeInt;
+  float               audioSampleRate;
+  int                 numAudioChannels;
+  HANDLE              hAudioPipe;   // named pipe server handle (write end)
+  volatile bool       aborted;
+};
+
+static DWORD WINAPI AudioWriterThread(LPVOID lpParam) {
+  AudioThreadContext* ctx = reinterpret_cast<AudioThreadContext*>(lpParam);
+
+  csSDK_uint32 audioRenderID = 0;
+  ctx->settings->sequenceAudioSuite->MakeAudioRenderer(
+      ctx->exID, ctx->startTime,
+      (PrAudioChannelType)ctx->channelTypeInt,
+      kPrAudioSampleType_32BitFloat,
+      ctx->audioSampleRate, &audioRenderID);
+
+  csSDK_int32 maxBlip = 0;
+  ctx->settings->sequenceAudioSuite->GetMaxBlip(
+      audioRenderID, ctx->ticksPerFrame, &maxBlip);
+  if (maxBlip <= 0) maxBlip = 4096;
+
+  PrAudioSample totalSamples = (PrAudioSample)(
+      (double)ctx->exportDuration / (double)ctx->ticksPerSecond * ctx->audioSampleRate);
+
+  std::vector<float> interleavedBuf(maxBlip * ctx->numAudioChannels);
+  std::vector<float*> chBufs(ctx->numAudioChannels);
+  std::vector<std::vector<float>> chData(ctx->numAudioChannels, std::vector<float>(maxBlip));
+  for (int c = 0; c < ctx->numAudioChannels; c++)
+    chBufs[c] = chData[c].data();
+
+  // Wait for FFmpeg to connect to our named pipe
+  ConnectNamedPipe(ctx->hAudioPipe, NULL);
+
+  PrAudioSample remaining = totalSamples;
+  while (remaining > 0 && !ctx->aborted) {
+    csSDK_uint32 toGet = (csSDK_uint32)(remaining < (PrAudioSample)maxBlip ? remaining : maxBlip);
+    ctx->settings->sequenceAudioSuite->GetAudio(audioRenderID, toGet, chBufs.data(), kPrFalse);
+
+    // Interleave channels
+    for (csSDK_uint32 s = 0; s < toGet; s++)
+      for (int c = 0; c < ctx->numAudioChannels; c++)
+        interleavedBuf[s * ctx->numAudioChannels + c] = chBufs[c][s];
+
+    DWORD written = 0;
+    if (!WriteFile(ctx->hAudioPipe, interleavedBuf.data(),
+                   toGet * ctx->numAudioChannels * sizeof(float), &written, NULL))
+      break;
+    remaining -= toGet;
+  }
+
+  FlushFileBuffers(ctx->hAudioPipe);
+  DisconnectNamedPipe(ctx->hAudioPipe);
+
+  ctx->settings->sequenceAudioSuite->ReleaseAudioRenderer(ctx->exID, audioRenderID);
+  return 0;
+}
+
+// The main export function - named pipes to a single ffmpeg process, no intermediate files
+prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
+  prMALError result = malNoError;
+  csSDK_uint32 exID = exportInfoP->exporterPluginID;
+  ExportSettings *mySettings =
+      reinterpret_cast<ExportSettings *>(exportInfoP->privateData);
+  exParamValues ticksPerFrame, width, height, sampleRate, channelType;
+
+  mySettings->exportParamSuite->GetParamValue(exID, 0, ADBEVideoFPS, &ticksPerFrame);
+  mySettings->exportParamSuite->GetParamValue(exID, 0, ADBEVideoWidth, &width);
+  mySettings->exportParamSuite->GetParamValue(exID, 0, ADBEVideoHeight, &height);
+
+  // ==== Get the REAL output path from Premiere (keep as wide string) ====
+  std::wstring outputPathW;
+  {
+    csSDK_int32 pathLen = 0;
+    mySettings->exportFileSuite->GetPlatformPath(exportInfoP->fileObject, &pathLen, NULL);
+    if (pathLen > 0) {
+      std::vector<prUTF16Char> pathBuf(pathLen + 1, 0);
+      mySettings->exportFileSuite->GetPlatformPath(exportInfoP->fileObject, &pathLen, pathBuf.data());
+      outputPathW = PrPathToWString(pathBuf.data(), pathLen);
+    }
+  }
+  if (outputPathW.empty()) outputPathW = L"output.mp4";
+
+  // ==== Calculate FPS ====
+  PrTime ticksPerSecond;
+  mySettings->timeSuite->GetTicksPerSecond(&ticksPerSecond);
+  double fps = (double)ticksPerSecond / (double)ticksPerFrame.value.timeValue;
+
+  // ==== Audio params ====
+  float audioSampleRate = 48000.0f;
+  int numAudioChannels = 2;
+  int channelTypeInt = 1;
+  bool hasAudio = (exportInfoP->exportAudio != 0);
+  if (hasAudio) {
+    mySettings->exportParamSuite->GetParamValue(exID, 0, ADBEAudioRatePerSecond, &sampleRate);
+    audioSampleRate = sampleRate.value.floatValue;
+    mySettings->exportParamSuite->GetParamValue(exID, 0, ADBEAudioNumChannels, &channelType);
+    channelTypeInt = channelType.value.intValue;
+    numAudioChannels = GetNumberOfAudioChannels(channelTypeInt);
+  }
+
+  PrTime exportDuration = exportInfoP->endTime - exportInfoP->startTime;
+
+  // ==== Create unique named pipe names using process ID ====
+  DWORD pid = GetCurrentProcessId();
+  std::wstring videoPipeName = L"\\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid);
+  std::wstring audioPipeName = L"\\\\.\\pipe\\ffmpeg_audio_" + std::to_wstring(pid);
+
+  // ==== Create named pipe for video (server side) ====
+  HANDLE hVideoPipe = CreateNamedPipeW(
+      videoPipeName.c_str(),
+      PIPE_ACCESS_OUTBOUND,
+      PIPE_TYPE_BYTE | PIPE_WAIT,
+      1, 1024 * 1024, 0, 0, NULL);
+  if (hVideoPipe == INVALID_HANDLE_VALUE)
+    return exportReturn_ErrOther;
+
+  // ==== Create named pipe for audio (server side) ====
+  HANDLE hAudioPipe = INVALID_HANDLE_VALUE;
+  if (hasAudio) {
+    hAudioPipe = CreateNamedPipeW(
+        audioPipeName.c_str(),
+        PIPE_ACCESS_OUTBOUND,
+        PIPE_TYPE_BYTE | PIPE_WAIT,
+        1, 512 * 1024, 0, 0, NULL);
+    if (hAudioPipe == INVALID_HANDLE_VALUE) {
+      CloseHandle(hVideoPipe);
+      return exportReturn_ErrOther;
+    }
+  }
+
+  // ==== Read .3fuipreset from FFmpegFreeUI ====
+  exParamValues presetPathVal;
+  mySettings->exportParamSuite->GetParamValue(exID, 0, FFMPEGFREEUI_PRESET_PATH_ID, &presetPathVal);
+  std::wstring presetPath(reinterpret_cast<wchar_t*>(presetPathVal.paramString));
+
+  // Parse preset JSON: expected format:
+  //   { "video_args": "...", "audio_args": "..." }
+  // Falls back to safe H.264 defaults if no preset or parse fails.
+  std::wstring vEncArgs = L"-c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p";
+  std::wstring aEncArgs = L"-c:a aac -b:a 320k";
+
+  if (!presetPath.empty() &&
+      GetFileAttributesW(presetPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+  {
+    // Read the file (UTF-8)
+    HANDLE hFile = CreateFileW(presetPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                               NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+      DWORD sz = GetFileSize(hFile, NULL);
+      if (sz > 0 && sz < 64 * 1024) {
+        std::string jsonBuf(sz, '\0');
+        DWORD read = 0;
+        ReadFile(hFile, &jsonBuf[0], sz, &read, NULL);
+        jsonBuf.resize(read);
+
+        // Minimal JSON string extractor: find key, return value between next pair of quotes
+        auto extractJsonStr = [&](const std::string& json, const std::string& key) -> std::string {
+          std::string search = "\"" + key + "\"";
+          size_t pos = json.find(search);
+          if (pos == std::string::npos) return "";
+          pos = json.find(':', pos + search.size());
+          if (pos == std::string::npos) return "";
+          pos = json.find('"', pos + 1);
+          if (pos == std::string::npos) return "";
+          size_t end = pos + 1;
+          while (end < json.size()) {
+            if (json[end] == '\\') { end += 2; continue; }
+            if (json[end] == '"') break;
+            end++;
+          }
+          return json.substr(pos + 1, end - pos - 1);
+        };
+
+        std::string vStr = extractJsonStr(jsonBuf, "video_args");
+        std::string aStr = extractJsonStr(jsonBuf, "audio_args");
+
+        if (!vStr.empty())
+          vEncArgs = std::wstring(vStr.begin(), vStr.end());
+        if (!aStr.empty())
+          aEncArgs = std::wstring(aStr.begin(), aStr.end());
+      }
+      CloseHandle(hFile);
+    }
+  }
+
+  // Build fps and size strings
+  std::wstring wW = std::to_wstring(width.value.intValue);
+  std::wstring wH = std::to_wstring(height.value.intValue);
+  char fpsBuf[32]; snprintf(fpsBuf, sizeof(fpsBuf), "%.6f", fps);
+  std::string fpsStr(fpsBuf);
+  std::wstring wFps(fpsStr.begin(), fpsStr.end());
+
+  // ==== Build full FFmpeg command ====
+  std::wstring cmd;
+  if (hasAudio) {
+    std::wstring wSR  = std::to_wstring((int)audioSampleRate);
+    std::wstring wNCh = std::to_wstring(numAudioChannels);
+    cmd = L"ffmpeg.exe -y"
+          L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH +
+          L" -r " + wFps +
+          L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid) +
+          L" -f f32le -ar " + wSR + L" -ac " + wNCh +
+          L" -i \\\\.\\pipe\\ffmpeg_audio_" + std::to_wstring(pid) +
+          L" -vf vflip " + vEncArgs + L" " + aEncArgs +
+          L" \"" + outputPathW + L"\"";
+  } else {
+    cmd = L"ffmpeg.exe -y"
+          L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH +
+          L" -r " + wFps +
+          L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid) +
+          L" -vf vflip " + vEncArgs +
+          L" \"" + outputPathW + L"\"";
+  }
+  // ==== Launch FFmpeg via CreateProcessW for Unicode path support ====
+  PROCESS_INFORMATION piProcInfo;
+  STARTUPINFOW siStartInfo;
+  ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+  ZeroMemory(&siStartInfo, sizeof(STARTUPINFOW));
+  siStartInfo.cb = sizeof(STARTUPINFOW);
+
+  std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
+  cmdBuf.push_back(0);
+
+  if (!CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, FALSE,
+                      CREATE_NO_WINDOW, NULL, NULL, &siStartInfo, &piProcInfo)) {
+    CloseHandle(hVideoPipe);
+    if (hAudioPipe != INVALID_HANDLE_VALUE) CloseHandle(hAudioPipe);
+    return exportReturn_ErrOther;
+  }
+
+  // ==== Start audio thread BEFORE connecting video pipe ====
+  HANDLE hAudioThread = NULL;
+  AudioThreadContext audioCtx = {};
+  if (hasAudio) {
+    audioCtx.settings        = mySettings;
+    audioCtx.exID            = exID;
+    audioCtx.startTime       = exportInfoP->startTime;
+    audioCtx.exportDuration  = exportDuration;
+    audioCtx.ticksPerSecond  = ticksPerSecond;
+    audioCtx.ticksPerFrame   = ticksPerFrame.value.timeValue;
+    audioCtx.channelTypeInt  = channelTypeInt;
+    audioCtx.audioSampleRate = audioSampleRate;
+    audioCtx.numAudioChannels= numAudioChannels;
+    audioCtx.hAudioPipe      = hAudioPipe;
+    audioCtx.aborted         = false;
+    hAudioThread = CreateThread(NULL, 0, AudioWriterThread, &audioCtx, 0, NULL);
+  }
+
+  // ==== Connect video pipe (blocks until FFmpeg opens it) ====
+  ConnectNamedPipe(hVideoPipe, NULL);
+
+  // ==== Render and pipe VIDEO frames ====
+  mySettings->sequenceRenderSuite->MakeVideoRenderer(
+      exID, &mySettings->videoRenderID, ticksPerFrame.value.timeValue);
+
+  SequenceRender_ParamsRec renderParms;
+  PrPixelFormat pixelFormats[] = {PrPixelFormat_BGRA_4444_8u};
+  renderParms.inRequestedPixelFormatArray      = pixelFormats;
+  renderParms.inRequestedPixelFormatArrayCount = 1;
+  renderParms.inWidth                          = width.value.intValue;
+  renderParms.inHeight                         = height.value.intValue;
+  renderParms.inPixelAspectRatioNumerator      = 1;
+  renderParms.inPixelAspectRatioDenominator    = 1;
+  renderParms.inRenderQuality                  = kPrRenderQuality_Max;
+  renderParms.inFieldType                      = prFieldsNone;
+  renderParms.inDeinterlace                    = kPrFalse;
+  renderParms.inDeinterlaceQuality             = kPrRenderQuality_Max;
+  renderParms.inCompositeOnBlack               = kPrFalse;
+
+  SequenceRender_GetFrameReturnRec getFrameReturn;
+  float videoWeight = hasAudio ? 0.85f : 1.0f;
+
+  for (PrTime videoTime = exportInfoP->startTime;
+       videoTime <= (exportInfoP->endTime - ticksPerFrame.value.timeValue);
+       videoTime += ticksPerFrame.value.timeValue)
+  {
+    result = mySettings->sequenceRenderSuite->RenderVideoFrame(
+        mySettings->videoRenderID, videoTime, &renderParms,
+        kRenderCacheType_None, &getFrameReturn);
+
+    if (result == suiteError_NoError && getFrameReturn.outFrame) {
+      char *pixelData;
+      csSDK_int32 rowBytes;
+      mySettings->ppixSuite->GetPixels(getFrameReturn.outFrame,
+                                       PrPPixBufferAccess_ReadOnly, &pixelData);
+      mySettings->ppixSuite->GetRowBytes(getFrameReturn.outFrame, &rowBytes);
+
+      DWORD dwWritten = 0;
+      // rowBytes may be negative (bottom-up), use abs for byte count
+      csSDK_int32 absRowBytes = rowBytes < 0 ? -rowBytes : rowBytes;
+      WriteFile(hVideoPipe, pixelData, absRowBytes * height.value.intValue, &dwWritten, NULL);
+      mySettings->ppixSuite->Dispose(getFrameReturn.outFrame);
+    }
+
+    float progress = static_cast<float>(videoTime - exportInfoP->startTime) /
+                     static_cast<float>(exportDuration) * videoWeight;
+    result = mySettings->exportProgressSuite->UpdateProgressPercent(exID, progress);
+    if (result == suiteError_ExporterSuspended)
+      mySettings->exportProgressSuite->WaitForResume(exID);
+    else if (result == exportReturn_Abort) {
+      audioCtx.aborted = true;
+      break;
+    }
+  }
+
+  mySettings->sequenceRenderSuite->ReleaseVideoRenderer(exID, mySettings->videoRenderID);
+
+  // Close video pipe to signal EOF to FFmpeg
+  FlushFileBuffers(hVideoPipe);
+  DisconnectNamedPipe(hVideoPipe);
+  CloseHandle(hVideoPipe);
+
+  // Wait for audio thread to finish
+  if (hAudioThread) {
+    WaitForSingleObject(hAudioThread, INFINITE);
+    CloseHandle(hAudioThread);
+    CloseHandle(hAudioPipe);
+  }
+
+  // Wait for FFmpeg to finish encoding
+  mySettings->exportProgressSuite->UpdateProgressPercent(exID, 0.95f);
+  WaitForSingleObject(piProcInfo.hProcess, INFINITE);
+  mySettings->exportProgressSuite->UpdateProgressPercent(exID, 1.0f);
+
+  CloseHandle(piProcInfo.hProcess);
+  CloseHandle(piProcInfo.hThread);
+
+  return (result == exportReturn_Abort) ? result : malNoError;
+}
