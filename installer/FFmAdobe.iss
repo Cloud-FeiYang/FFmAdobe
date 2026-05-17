@@ -1,19 +1,16 @@
 ; ============================================================
 ; FFmAdobe Installer - Inno Setup Script
 ; ============================================================
-; Installs:
-;   1. FFmpegExporter.prm + PremierePresetConverter.exe (Plugin)
-;   2. FFmpegFreeUI (encoding configuration frontend)
-; Both components have independent uninstall entries in Windows Settings.
+; Flow: Welcome → License → Components → Plugin Path → FFmpegFreeUI Path → Ready → Install
 ; ============================================================
 
 #define MyAppName      "FFmAdobe"
 #define MyAppVersion   "26w20a"
 #define MyAppPublisher "FFmAdobe Project"
-#define MyAppURL       "https://github.com/FFmAdobe"
+#define MyAppURL       "https://github.com/Cloud-FeiYang/FFmAdobe"
 
 ; ============================================================
-; [Setup] - Installer metadata and behavior
+; [Setup]
 ; ============================================================
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -32,10 +29,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 WizardStyle=modern
 SetupIconFile=compiler:SetupClassicIcon.ico
-UninstallDisplayIcon={app}\uninstall-plugin.exe
 DisableProgramGroupPage=yes
-; Allow user to change dirs for each component
-DisableDirPage=no
+; Hide the default dir page — we use custom pages instead
+DisableDirPage=yes
 
 ; ============================================================
 ; [Languages]
@@ -45,7 +41,7 @@ Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 ; ============================================================
-; [Types] - Installation types
+; [Types]
 ; ============================================================
 [Types]
 Name: "full";    Description: "完整安装 (Full installation)"
@@ -53,72 +49,132 @@ Name: "plugin";  Description: "仅安装插件 (Plugin only)"
 Name: "custom";  Description: "自定义 (Custom)"; Flags: iscustom
 
 ; ============================================================
-; [Components] - Selectable components
+; [Components] — hint text tells user paths come next
 ; ============================================================
 [Components]
-Name: "plugin";    Description: "Premiere Pro FFmpeg Exporter 插件"; Types: full plugin custom; Flags: fixed
-Name: "ffui";      Description: "FFmpegFreeUI 编码参数配置前端";     Types: full custom
-Name: "converter"; Description: "PremierePresetConverter 预设转换工具"; Types: full custom
+Name: "plugin";    Description: "FFmAdobe 插件 (.prm)  —  Premiere Pro 导出器"; Types: full plugin custom; Flags: fixed
+Name: "converter"; Description: "PremierePresetConverter  —  预设转换工具（随插件安装）"; Types: full plugin custom
+Name: "ffui";      Description: "FFmpegFreeUI  —  编码参数配置前端"; Types: full custom
 
 ; ============================================================
-; [Dirs] - Directories to create
-; ============================================================
-[Dirs]
-; Plugin install directory (Adobe MediaCore standard path)
-Name: "{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe"; Components: plugin
-; FFmpegFreeUI install directory
-Name: "{app}\FFmpegFreeUI"; Components: ffui
-
-; ============================================================
-; [Files] - Files to install
+; [Files] — DestDir uses {code:...} to read custom page values
 ; ============================================================
 [Files]
-; --- Plugin files → Adobe MediaCore directory ---
-Source: "staging\Plugin\FFmAdobe.prm";              DestDir: "{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe"; Flags: ignoreversion; Components: plugin
-Source: "staging\Plugin\PremierePresetConverter.exe";  DestDir: "{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe"; Flags: ignoreversion; Components: converter
-
-; --- FFmpegFreeUI files → {app}\FFmpegFreeUI ---
-Source: "staging\FFmpegFreeUI\FFmpegFreeUI.exe";            DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
-Source: "staging\FFmpegFreeUI\D3DCompiler_47_cor3.dll";      DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
-Source: "staging\FFmpegFreeUI\wpfgfx_cor3.dll";              DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
-Source: "staging\FFmpegFreeUI\PresentationNative_cor3.dll";  DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
-Source: "staging\FFmpegFreeUI\vcruntime140_cor3.dll";         DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
-Source: "staging\FFmpegFreeUI\MonoPosixHelper.dll";           DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
-Source: "staging\FFmpegFreeUI\libMonoPosixHelper.dll";        DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
-Source: "staging\FFmpegFreeUI\PenImc_cor3.dll";               DestDir: "{app}\FFmpegFreeUI"; Flags: ignoreversion; Components: ffui
+; Plugin
+Source: "staging\Plugin\FFmAdobe.prm";              DestDir: "{code:GetPluginDir}"; Flags: ignoreversion; Components: plugin
+Source: "staging\Plugin\PremierePresetConverter.exe"; DestDir: "{code:GetPluginDir}"; Flags: ignoreversion; Components: converter
+; FFmpegFreeUI
+Source: "staging\FFmpegFreeUI\FFmpegFreeUI.exe";            DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
+Source: "staging\FFmpegFreeUI\D3DCompiler_47_cor3.dll";      DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
+Source: "staging\FFmpegFreeUI\wpfgfx_cor3.dll";              DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
+Source: "staging\FFmpegFreeUI\PresentationNative_cor3.dll";  DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
+Source: "staging\FFmpegFreeUI\vcruntime140_cor3.dll";         DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
+Source: "staging\FFmpegFreeUI\MonoPosixHelper.dll";           DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
+Source: "staging\FFmpegFreeUI\libMonoPosixHelper.dll";        DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
+Source: "staging\FFmpegFreeUI\PenImc_cor3.dll";               DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
 
 ; ============================================================
-; [Registry] - Write FFmpegFreeUI path for plugin discovery
+; [Dirs]
+; ============================================================
+[Dirs]
+Name: "{code:GetPluginDir}"; Components: plugin
+Name: "{code:GetFFUIDir}";   Components: ffui
+
+; ============================================================
+; [Registry]
 ; ============================================================
 [Registry]
-; The C++ plugin reads this key to locate FFmpegFreeUI.exe
-Root: HKLM; Subkey: "SOFTWARE\FFmAdobe"; ValueType: string; ValueName: "FFmpegFreeUIPath"; ValueData: "{app}\FFmpegFreeUI\FFmpegFreeUI.exe"; Flags: uninsdeletevalue; Components: ffui
-; Clean up the key on full uninstall
+Root: HKLM; Subkey: "SOFTWARE\FFmAdobe"; ValueType: string; ValueName: "FFmpegFreeUIPath"; ValueData: "{code:GetFFUIDir}\FFmpegFreeUI.exe"; Flags: uninsdeletevalue; Components: ffui
+Root: HKLM; Subkey: "SOFTWARE\FFmAdobe"; ValueType: string; ValueName: "PluginPath"; ValueData: "{code:GetPluginDir}"; Flags: uninsdeletevalue; Components: plugin
 Root: HKLM; Subkey: "SOFTWARE\FFmAdobe"; Flags: uninsdeletekeyifempty
 
 ; ============================================================
-; [Icons] - Start Menu shortcuts
+; [Icons]
 ; ============================================================
 [Icons]
-Name: "{group}\FFmpegFreeUI";          Filename: "{app}\FFmpegFreeUI\FFmpegFreeUI.exe"; Components: ffui
-Name: "{group}\卸载 FFmAdobe";          Filename: "{uninstallexe}"
+Name: "{group}\FFmpegFreeUI";  Filename: "{code:GetFFUIDir}\FFmpegFreeUI.exe"; Components: ffui
+Name: "{group}\卸载 FFmAdobe";  Filename: "{uninstallexe}"
 
 ; ============================================================
-; [UninstallDelete] - Clean up extra files on uninstall
+; [UninstallDelete]
 ; ============================================================
 [UninstallDelete]
-; Remove the plugin directory if empty after uninstall
-Type: dirifempty; Name: "{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe"
-; Remove FFmpegFreeUI directory
-Type: filesandordirs; Name: "{app}\FFmpegFreeUI"
-; Remove user preset data
+Type: dirifempty;     Name: "{code:GetPluginDir}"
+Type: filesandordirs; Name: "{code:GetFFUIDir}"
 Type: filesandordirs; Name: "{commonappdata}\FFmAdobe"
 
 ; ============================================================
-; [Code] - Pascal script for custom behavior
+; [Code] — Custom directory pages after component selection
 ; ============================================================
 [Code]
-// Show a summary page before installation
+var
+  PluginDirPage: TInputDirWizardPage;
+  FFUIDirPage:   TInputDirWizardPage;
+
+// Default paths
+function DefaultPluginDir: String;
+begin
+  Result := ExpandConstant('{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe');
+end;
+
+function DefaultFFUIDir: String;
+begin
+  Result := ExpandConstant('{autopf}\FFmAdobe\FFmpegFreeUI');
+end;
+
+// Called by {code:GetPluginDir} — returns the user-selected plugin path
+function GetPluginDir(Param: String): String;
+begin
+  if Assigned(PluginDirPage) then
+    Result := PluginDirPage.Values[0]
+  else
+    Result := DefaultPluginDir;
+end;
+
+// Called by {code:GetFFUIDir} — returns the user-selected FFmpegFreeUI path
+function GetFFUIDir(Param: String): String;
+begin
+  if Assigned(FFUIDirPage) then
+    Result := FFUIDirPage.Values[0]
+  else
+    Result := DefaultFFUIDir;
+end;
+
+// Create custom pages after the component selection page
+procedure InitializeWizard;
+begin
+  // Plugin directory page (always shown since plugin is fixed/required)
+  PluginDirPage := CreateInputDirPage(
+    wpSelectComponents,
+    '插件安装目录 (Plugin Install Path)',
+    '请选择 FFmAdobe 插件的安装目录。',
+    '插件文件 (FFmAdobe.prm) 将安装到以下目录。' + #13#10 +
+    '如果你的 Premiere Pro 安装在非默认位置，请修改为对应的 MediaCore 目录。' + #13#10#13#10 +
+    '默认路径适用于标准安装的 Premiere Pro。',
+    False, '');
+  PluginDirPage.Add('插件目录:');
+  PluginDirPage.Values[0] := DefaultPluginDir;
+
+  // FFmpegFreeUI directory page (shown only when ffui component is selected)
+  FFUIDirPage := CreateInputDirPage(
+    PluginDirPage.ID,
+    'FFmpegFreeUI 安装目录',
+    '请选择 FFmpegFreeUI 前端工具的安装目录。',
+    'FFmpegFreeUI 将安装到以下目录。',
+    False, '');
+  FFUIDirPage.Add('FFmpegFreeUI 目录:');
+  FFUIDirPage.Values[0] := DefaultFFUIDir;
+end;
+
+// Show/hide FFmpegFreeUI dir page based on component selection
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if (PageID = FFUIDirPage.ID) and (not WizardIsComponentSelected('ffui')) then
+    Result := True;
+end;
+
+// Summary on Ready page
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
   S: String;
@@ -128,16 +184,20 @@ begin
   S := S + MemoComponentsInfo + NewLine + NewLine;
 
   S := S + '插件安装目录:' + NewLine;
-  S := S + Space + ExpandConstant('{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe') + NewLine + NewLine;
+  S := S + Space + GetPluginDir('') + NewLine + NewLine;
 
   if WizardIsComponentSelected('ffui') then
   begin
     S := S + 'FFmpegFreeUI 安装目录:' + NewLine;
-    S := S + Space + ExpandConstant('{app}\FFmpegFreeUI') + NewLine + NewLine;
+    S := S + Space + GetFFUIDir('') + NewLine + NewLine;
   end;
 
-  S := S + '注册表:' + NewLine;
-  S := S + Space + 'HKLM\SOFTWARE\FFmAdobe\FFmpegFreeUIPath' + NewLine;
+  if WizardIsComponentSelected('ffui') then
+  begin
+    S := S + '注册表:' + NewLine;
+    S := S + Space + 'HKLM\SOFTWARE\FFmAdobe\FFmpegFreeUIPath' + NewLine;
+    S := S + Space + '  = ' + GetFFUIDir('') + '\FFmpegFreeUI.exe' + NewLine;
+  end;
 
   Result := S;
 end;
