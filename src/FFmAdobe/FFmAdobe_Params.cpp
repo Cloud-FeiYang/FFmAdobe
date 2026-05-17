@@ -109,8 +109,8 @@ prMALError exSDKGenerateDefaultParams(exportStdParms* stdParms, exGenerateDefaul
     }
     AddInt(ADBEBasicVideoGroup, ADBEVideoFieldType, seqField.mInt32, 0, 3);
 
-    // Color range (default: tv = limited)
-    AddInt(ADBEBasicVideoGroup, FFMADOBE_COLOR_RANGE_ID, COLOR_RANGE_TV, 0, 1);
+    // Color range (default: pc = full)
+    AddInt(ADBEBasicVideoGroup, FFMADOBE_COLOR_RANGE_ID, COLOR_RANGE_PC, 0, 1);
 
     // Color space (default: bt709 for HD content)
     AddInt(ADBEBasicVideoGroup, FFMADOBE_COLOR_SPACE_ID, COLOR_SPACE_BT709, 0, 4);
