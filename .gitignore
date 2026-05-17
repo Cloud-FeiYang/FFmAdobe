@@ -1,16 +1,9 @@
-cmake-build/
+# === Build outputs ===
 build/
-*.pdb
-*.obj
-*.lib
-*.exp
-*.ilk
-*.suo
-*.sdf
-*.opensdf
-*.user
-.vs/
+cmake-build/
 out/
+
+# === MSVC / CMake generated ===
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -18,7 +11,23 @@ Makefile
 *.vcxproj
 *.vcxproj.filters
 *.sln
+.vs/
 
+# === Object / debug files ===
+*.obj
+*.lib
+*.exp
+*.ilk
+*.pdb
+*.suo
+*.sdf
+*.opensdf
+*.user
+
+# === Installer artifacts (staging & output are built, not committed) ===
 installer/staging/
 installer/output/
-installer/*.wixpdb
+
+# === .NET build outputs (PremierePresetConverter) ===
+src/PremierePresetConverter/bin/
+src/PremierePresetConverter/obj/

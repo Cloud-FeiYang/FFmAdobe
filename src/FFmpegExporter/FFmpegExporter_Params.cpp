@@ -1,7 +1,9 @@
 #include "FFmpegExporter_Params.h"
 #include <windows.h>
 #include <shlobj.h>
+#include <commdlg.h>
 #include <string>
+#include <vector>
 
 // ===========================================================
 // exSDKGenerateDefaultParams
@@ -54,7 +56,7 @@ prMALError exSDKGenerateDefaultParams(exportStdParms* stdParms, exGenerateDefaul
         ps->AddParam(exID, mg, FFMPEGFREEUI_INNER_GROUP_ID, &p);
     }
 
-    // Hidden preset path string (stores the .3fuipreset file path chosen by user)
+    // Hidden preset path string (stores the simplified .json path after conversion)
     {
         exNewParamInfo p; exParamValues v;
         safeStrCpy(p.identifier, 256, FFMPEGFREEUI_PRESET_PATH_ID);
@@ -260,7 +262,7 @@ prMALError exSDKGetParamSummary(exportStdParms* stdParmsP, exParamSummaryRec* re
 }
 
 // ===========================================================
-// exSDKParamButton - Launch FFmpegFreeUI when Configure is clicked
+// exSDKParamButton - Launch FFmpegFreeUI + file picker + converter
 // ===========================================================
 prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
 {
@@ -274,28 +276,26 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
 
     // ==== Resolve FFmpegFreeUI.exe: same-dir first, then registry fallback ====
     std::wstring ffuiExePath;
+    std::wstring pluginDir;
     {
-        // 1. Check same directory as the plugin DLL
         HMODULE hSelf = NULL;
         GetModuleHandleExW(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             (LPCWSTR)&exSDKParamButton, &hSelf);
         wchar_t dllPath[MAX_PATH] = {};
         GetModuleFileNameW(hSelf, dllPath, MAX_PATH);
-        std::wstring dir(dllPath);
-        size_t slash = dir.find_last_of(L"\\/");
-        if (slash != std::wstring::npos) dir = dir.substr(0, slash + 1);
-        std::wstring sameDir = dir + L"FFmpegFreeUI.exe";
+        pluginDir = dllPath;
+        size_t slash = pluginDir.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) pluginDir = pluginDir.substr(0, slash + 1);
+        std::wstring sameDir = pluginDir + L"FFmpegFreeUI.exe";
 
         if (GetFileAttributesW(sameDir.c_str()) != INVALID_FILE_ATTRIBUTES) {
             ffuiExePath = sameDir;
         } else {
-            // 2. Read path from registry (written by MSI installer)
             HKEY hKey = NULL;
             if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\FFmAdobe", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
                 wchar_t regPath[MAX_PATH] = {};
-                DWORD sz = sizeof(regPath);
-                DWORD type = REG_SZ;
+                DWORD sz = sizeof(regPath); DWORD type = REG_SZ;
                 if (RegQueryValueExW(hKey, L"FFmpegFreeUIPath", NULL, &type, (LPBYTE)regPath, &sz) == ERROR_SUCCESS)
                     ffuiExePath = regPath;
                 RegCloseKey(hKey);
@@ -303,66 +303,102 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
         }
     }
 
-    // Verify the resolved path is valid
+    HWND mainWnd = lRec->windowSuite ? lRec->windowSuite->GetMainWindow() : NULL;
+
     if (ffuiExePath.empty() || GetFileAttributesW(ffuiExePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        HWND mainWnd = lRec->windowSuite ? lRec->windowSuite->GetMainWindow() : NULL;
-        std::wstring msg = L"FFmpegFreeUI.exe not found.\n\n"
-            L"Please install FFmpegFreeUI and ensure it is either:\n"
-            L"  \x2022 In the same folder as FFmpegExporter.prm, or\n"
-            L"  \x2022 Installed via the FFmAdobe installer (which configures the path automatically).\n\n"
-            L"Registry key checked: HKLM\\SOFTWARE\\FFmAdobe\\FFmpegFreeUIPath";
-        MessageBoxW(mainWnd, msg.c_str(), L"FFmpegFreeUI Not Found", MB_OK | MB_ICONERROR);
-        return exportReturn_ErrOther;
-    }
-
-    // Get current preset path (if any)
-    exParamValues presetPathVal;
-    ps->GetParamValue(exID, rec->multiGroupIndex, FFMPEGFREEUI_PRESET_PATH_ID, &presetPathVal);
-    std::wstring currentPresetPath(reinterpret_cast<wchar_t*>(presetPathVal.paramString));
-
-    // If no preset yet, suggest a default save location
-    if (currentPresetPath.empty()) {
-        wchar_t appData[MAX_PATH];
-        SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appData);
-        currentPresetPath = std::wstring(appData) + L"\\FFmpegFreeUI\\last_preset.3fuipreset";
-        // Ensure directory exists
-        std::wstring presetDir = std::wstring(appData) + L"\\FFmpegFreeUI";
-        CreateDirectoryW(presetDir.c_str(), NULL);
-    }
-
-    // Build args: pass the preset path so FFmpegFreeUI opens/creates it
-    std::wstring args = L"\"" + currentPresetPath + L"\"";
-
-    // Launch FFmpegFreeUI.exe (full path, not relying on PATH)
-    SHELLEXECUTEINFOW sei = {};
-    sei.cbSize = sizeof(sei);
-    sei.fMask  = SEE_MASK_NOCLOSEPROCESS;
-    sei.lpVerb = L"open";
-    sei.lpFile = ffuiExePath.c_str();
-    sei.lpParameters = args.c_str();
-    sei.nShow  = SW_SHOWNORMAL;
-
-    if (!ShellExecuteExW(&sei)) {
-        HWND mainWnd = lRec->windowSuite ? lRec->windowSuite->GetMainWindow() : NULL;
         MessageBoxW(mainWnd,
-            L"Failed to launch FFmpegFreeUI.exe.\nCheck if the file is corrupted or blocked.",
-            L"Launch Failed", MB_OK | MB_ICONERROR);
+            L"FFmpegFreeUI.exe not found.\n\n"
+            L"Please install FFmpegFreeUI via the FFmAdobe installer,\n"
+            L"or place it in the same folder as FFmpegExporter.prm.",
+            L"FFmpegFreeUI Not Found", MB_OK | MB_ICONERROR);
         return exportReturn_ErrOther;
     }
 
-    // Wait for FFmpegFreeUI to close (so the preset file is written)
-    if (sei.hProcess) {
-        WaitForSingleObject(sei.hProcess, INFINITE);
-        CloseHandle(sei.hProcess);
+    // ==== Step 1: Ask user what to do ====
+    int choice = MessageBoxW(mainWnd,
+        L"Configure encoding parameters:\n\n"
+        L"[YES]    Launch FFmpegFreeUI, configure, then select saved preset\n"
+        L"[NO]     Select an existing FFmpegFreeUI preset (.json)\n"
+        L"[Cancel] Cancel",
+        L"FFmpegFreeUI - Configure", MB_YESNOCANCEL | MB_ICONQUESTION);
+
+    if (choice == IDCANCEL) return result;
+
+    if (choice == IDYES) {
+        // Launch FFmpegFreeUI and wait
+        SHELLEXECUTEINFOW sei = {};
+        sei.cbSize = sizeof(sei);
+        sei.fMask  = SEE_MASK_NOCLOSEPROCESS;
+        sei.lpVerb = L"open";
+        sei.lpFile = ffuiExePath.c_str();
+        sei.nShow  = SW_SHOWNORMAL;
+        if (!ShellExecuteExW(&sei)) {
+            MessageBoxW(mainWnd, L"Failed to launch FFmpegFreeUI.exe.",
+                L"Launch Failed", MB_OK | MB_ICONERROR);
+            return exportReturn_ErrOther;
+        }
+        if (sei.hProcess) {
+            WaitForSingleObject(sei.hProcess, INFINITE);
+            CloseHandle(sei.hProcess);
+        }
+        MessageBoxW(mainWnd,
+            L"FFmpegFreeUI has closed.\n\n"
+            L"Now select the preset file (.json) you exported.\n"
+            L"(In FFmpegFreeUI: \x65B9\x6848\x7BA1\x7406 tab \x2192 \x5BFC\x51FA\x9884\x8BBE)",
+            L"Select Preset", MB_OK | MB_ICONINFORMATION);
     }
 
-    // After FFmpegFreeUI closes, check if the preset file was written
-    if (GetFileAttributesW(currentPresetPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        // Store the preset path in our hidden param
+    // ==== Step 2: File picker ====
+    std::wstring selectedPresetPath;
+    {
+        wchar_t filePath[MAX_PATH] = {};
+        OPENFILENAMEW ofn = {};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = mainWnd;
+        ofn.lpstrFilter = L"FFmpegFreeUI Preset (*.json)\0*.json\0All Files\0*.*\0";
+        ofn.lpstrFile = filePath;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrTitle = L"Select FFmpegFreeUI Preset (.json)";
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+        if (!GetOpenFileNameW(&ofn)) return result;
+        selectedPresetPath = filePath;
+    }
+
+    // ==== Step 3: Run PremierePresetConverter ====
+    wchar_t appData[MAX_PATH];
+    SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appData);
+    std::wstring outDir = std::wstring(appData) + L"\\FFmAdobe";
+    CreateDirectoryW(outDir.c_str(), NULL);
+    std::wstring simplifiedPath = outDir + L"\\premiere_preset.json";
+
+    std::wstring converterPath = pluginDir + L"PremierePresetConverter.exe";
+    if (GetFileAttributesW(converterPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        std::wstring cmdLine = L"\"" + converterPath + L"\" \"" +
+                               selectedPresetPath + L"\" \"" + simplifiedPath + L"\"";
+        STARTUPINFOW si = {}; si.cb = sizeof(si);
+        PROCESS_INFORMATION pi = {};
+        std::vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
+        cmdBuf.push_back(0);
+        if (CreateProcessW(NULL, cmdBuf.data(), NULL, NULL, FALSE,
+                           CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 15000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+    }
+
+    // ==== Step 4: Store simplified preset path ====
+    if (GetFileAttributesW(simplifiedPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        exParamValues presetPathVal;
+        ps->GetParamValue(exID, rec->multiGroupIndex, FFMPEGFREEUI_PRESET_PATH_ID, &presetPathVal);
         exParamValues newVal = presetPathVal;
-        wcsncpy(reinterpret_cast<wchar_t*>(newVal.paramString), currentPresetPath.c_str(), 1023);
+        wcsncpy(reinterpret_cast<wchar_t*>(newVal.paramString), simplifiedPath.c_str(), 1023);
         reinterpret_cast<wchar_t*>(newVal.paramString)[1023] = 0;
         ps->ChangeParam(exID, rec->multiGroupIndex, FFMPEGFREEUI_PRESET_PATH_ID, &newVal);
+    } else {
+        MessageBoxW(mainWnd,
+            L"Preset conversion may have failed.\nDefault settings (H.264 CRF 18) will be used.",
+            L"Warning", MB_OK | MB_ICONWARNING);
     }
 
     return result;

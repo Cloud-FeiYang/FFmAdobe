@@ -1,4 +1,4 @@
-﻿/*******************************************************************/
+/*******************************************************************/
 /*                                                                 */
 /*                      ADOBE CONFIDENTIAL                         */
 /*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
@@ -47,6 +47,7 @@
 #include "FFmpegExporter_Params.h"
 
 #include <windows.h>
+#include <shlobj.h>
 #include <string>
 #include <vector>
 
@@ -375,7 +376,7 @@ exSDKFileExtension(exportStdParms *stdParmsP,
 
 prMALError RenderAndWriteAllVideo(exDoExportRec *exportInfoP, float progress,
                                   float videoProgress, PrTime *exportDuration) {
-  // Stub 閳?not used in FFmpeg pipe mode
+  // Stub 闁?not used in FFmpeg pipe mode
   return malNoError;
 }
 
@@ -524,88 +525,83 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     }
   }
 
-  // ==== Read .3fuipreset from FFmpegFreeUI ====
-  exParamValues presetPathVal;
-  mySettings->exportParamSuite->GetParamValue(exID, 0, FFMPEGFREEUI_PRESET_PATH_ID, &presetPathVal);
-  std::wstring presetPath(reinterpret_cast<wchar_t*>(presetPathVal.paramString));
+  // ==== Read simplified preset JSON ====
+  std::wstring presetPath;
+  {
+    exParamValues ppv;
+    mySettings->exportParamSuite->GetParamValue(exID, 0, FFMPEGFREEUI_PRESET_PATH_ID, &ppv);
+    presetPath = std::wstring(reinterpret_cast<wchar_t*>(ppv.paramString));
+    if (presetPath.empty()) {
+      wchar_t ad[MAX_PATH];
+      SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
+      presetPath = std::wstring(ad) + L"\\FFmAdobe\\premiere_preset.json";
+    }
+  }
 
-  // Parse preset JSON: expected format:
-  //   { "video_args": "...", "audio_args": "..." }
-  // Falls back to safe H.264 defaults if no preset or parse fails.
   std::wstring vEncArgs = L"-c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p";
   std::wstring aEncArgs = L"-c:a aac -b:a 320k";
+  std::wstring vFilters, aFilters, extraInputArgs;
 
-  if (!presetPath.empty() &&
-      GetFileAttributesW(presetPath.c_str()) != INVALID_FILE_ATTRIBUTES)
-  {
-    // Read the file (UTF-8)
-    HANDLE hFile = CreateFileW(presetPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
-                               NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (!presetPath.empty() && GetFileAttributesW(presetPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+    HANDLE hFile = CreateFileW(presetPath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile != INVALID_HANDLE_VALUE) {
       DWORD sz = GetFileSize(hFile, NULL);
-      if (sz > 0 && sz < 64 * 1024) {
-        std::string jsonBuf(sz, '\0');
-        DWORD read = 0;
-        ReadFile(hFile, &jsonBuf[0], sz, &read, NULL);
-        jsonBuf.resize(read);
-
-        // Minimal JSON string extractor: find key, return value between next pair of quotes
-        auto extractJsonStr = [&](const std::string& json, const std::string& key) -> std::string {
-          std::string search = "\"" + key + "\"";
-          size_t pos = json.find(search);
-          if (pos == std::string::npos) return "";
-          pos = json.find(':', pos + search.size());
-          if (pos == std::string::npos) return "";
-          pos = json.find('"', pos + 1);
-          if (pos == std::string::npos) return "";
-          size_t end = pos + 1;
-          while (end < json.size()) {
-            if (json[end] == '\\') { end += 2; continue; }
-            if (json[end] == '"') break;
-            end++;
-          }
-          return json.substr(pos + 1, end - pos - 1);
+      if (sz > 0 && sz < 256*1024) {
+        std::string jsonBuf(sz, '\0'); DWORD rd=0;
+        ReadFile(hFile, &jsonBuf[0], sz, &rd, NULL); jsonBuf.resize(rd);
+        auto exJ = [&](const std::string& j, const std::string& k) -> std::string {
+          std::string s = "\"" + k + "\""; size_t p = j.find(s);
+          if(p==std::string::npos) return ""; p=j.find(':',p+s.size());
+          if(p==std::string::npos) return ""; p=j.find('"',p+1);
+          if(p==std::string::npos) return ""; size_t e=p+1;
+          while(e<j.size()){if(j[e]=='\\'){e+=2;continue;}if(j[e]=='"')break;e++;}
+          return j.substr(p+1,e-p-1);
         };
-
-        std::string vStr = extractJsonStr(jsonBuf, "video_args");
-        std::string aStr = extractJsonStr(jsonBuf, "audio_args");
-
-        if (!vStr.empty())
-          vEncArgs = std::wstring(vStr.begin(), vStr.end());
-        if (!aStr.empty())
-          aEncArgs = std::wstring(aStr.begin(), aStr.end());
+        auto u2w = [](const std::string& s) -> std::wstring {
+          if(s.empty()) return L"";
+          int l=MultiByteToWideChar(CP_UTF8,0,s.c_str(),(int)s.size(),NULL,0);
+          std::wstring w(l,0); MultiByteToWideChar(CP_UTF8,0,s.c_str(),(int)s.size(),&w[0],l);
+          return w;
+        };
+        std::string va=exJ(jsonBuf,"video_args"), aa=exJ(jsonBuf,"audio_args");
+        std::string vf=exJ(jsonBuf,"video_filters"), af=exJ(jsonBuf,"audio_filters");
+        std::string ei=exJ(jsonBuf,"extra_input_args");
+        if(!va.empty()) vEncArgs=u2w(va); if(!aa.empty()) aEncArgs=u2w(aa);
+        vFilters=u2w(vf); aFilters=u2w(af); extraInputArgs=u2w(ei);
       }
       CloseHandle(hFile);
     }
   }
 
-  // Build fps and size strings
   std::wstring wW = std::to_wstring(width.value.intValue);
   std::wstring wH = std::to_wstring(height.value.intValue);
   char fpsBuf[32]; snprintf(fpsBuf, sizeof(fpsBuf), "%.6f", fps);
-  std::string fpsStr(fpsBuf);
-  std::wstring wFps(fpsStr.begin(), fpsStr.end());
+  std::wstring wFps(std::string(fpsBuf).begin(), std::string(fpsBuf).end());
 
-  // ==== Build full FFmpeg command ====
+  std::wstring vfArg = L"vflip";
+  if (!vFilters.empty()) vfArg += L"," + vFilters;
+  std::wstring afArg;
+  if (!aFilters.empty()) afArg = L" -af \"" + aFilters + L"\"";
+
   std::wstring cmd;
   if (hasAudio) {
-    std::wstring wSR  = std::to_wstring((int)audioSampleRate);
+    std::wstring wSR = std::to_wstring((int)audioSampleRate);
     std::wstring wNCh = std::to_wstring(numAudioChannels);
-    cmd = L"ffmpeg.exe -y"
-          L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH +
-          L" -r " + wFps +
-          L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid) +
-          L" -f f32le -ar " + wSR + L" -ac " + wNCh +
-          L" -i \\\\.\\pipe\\ffmpeg_audio_" + std::to_wstring(pid) +
-          L" -vf vflip " + vEncArgs + L" " + aEncArgs +
-          L" \"" + outputPathW + L"\"";
+    cmd = L"ffmpeg.exe -y";
+    if (!extraInputArgs.empty()) cmd += L" " + extraInputArgs;
+    cmd += L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH + L" -r " + wFps
+         + L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid)
+         + L" -f f32le -ar " + wSR + L" -ac " + wNCh
+         + L" -i \\\\.\\pipe\\ffmpeg_audio_" + std::to_wstring(pid)
+         + L" -vf \"" + vfArg + L"\" " + vEncArgs + afArg + L" " + aEncArgs
+         + L" \"" + outputPathW + L"\"";
   } else {
-    cmd = L"ffmpeg.exe -y"
-          L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH +
-          L" -r " + wFps +
-          L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid) +
-          L" -vf vflip " + vEncArgs +
-          L" \"" + outputPathW + L"\"";
+    cmd = L"ffmpeg.exe -y";
+    if (!extraInputArgs.empty()) cmd += L" " + extraInputArgs;
+    cmd += L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH + L" -r " + wFps
+         + L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid)
+         + L" -vf \"" + vfArg + L"\" " + vEncArgs
+         + L" \"" + outputPathW + L"\"";
   }
   // ==== Launch FFmpeg via CreateProcessW for Unicode path support ====
   PROCESS_INFORMATION piProcInfo;
