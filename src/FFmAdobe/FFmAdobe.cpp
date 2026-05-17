@@ -1,4 +1,4 @@
-﻿/*******************************************************************/
+/*******************************************************************/
 /*                                                                 */
 /*                      ADOBE CONFIDENTIAL                         */
 /*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
@@ -416,12 +416,14 @@ static int ValidateFFmpegConfig(
     const std::wstring& vFilters,
     const std::wstring& aFilters,
     const std::wstring& extraInputArgs,
+    const std::wstring& wW,
+    const std::wstring& wH,
     bool hasAudio)
 {
   // Build dummy command using lavfi sources to avoid needing real input
   std::wstring validCmd = ffmpegExe + L" -y";
   if (!extraInputArgs.empty()) validCmd += L" " + extraInputArgs;
-  validCmd += L" -f lavfi -i color=c=black:s=64x64:d=0.1";
+  validCmd += L" -f lavfi -i color=c=black:s=" + wW + L"x" + wH + L":d=0.1";
   if (hasAudio)
     validCmd += L" -f lavfi -i anullsrc=r=48000:cl=stereo:d=0.1";
 
@@ -751,7 +753,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   // ==== Validate configuration before starting real export ====
   {
     int valResult = ValidateFFmpegConfig(ffmpegExe, vEncArgs, aEncArgs,
-                                         vFilters, aFilters, extraInputArgs, hasAudio);
+                                         vFilters, aFilters, extraInputArgs, wW, wH, hasAudio);
     if (valResult != 0) {
       // Read validation log for specific error message
       wchar_t ad2[MAX_PATH] = {};
