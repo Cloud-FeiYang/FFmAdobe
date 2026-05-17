@@ -383,8 +383,8 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
         exParamValues presetPathVal;
         ps->GetParamValue(exID, rec->multiGroupIndex, FFMPEGFREEUI_PRESET_PATH_ID, &presetPathVal);
         exParamValues newVal = presetPathVal;
-        wcsncpy(reinterpret_cast<wchar_t*>(newVal.paramString), finalPath.c_str(), 1023);
-        reinterpret_cast<wchar_t*>(newVal.paramString)[1023] = 0;
+        wcsncpy(reinterpret_cast<wchar_t*>(newVal.paramString), finalPath.c_str(), 255);
+        reinterpret_cast<wchar_t*>(newVal.paramString)[255] = 0;
         ps->ChangeParam(exID, rec->multiGroupIndex, FFMPEGFREEUI_PRESET_PATH_ID, &newVal);
     }
 
