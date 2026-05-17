@@ -1,4 +1,4 @@
-/*******************************************************************/
+﻿/*******************************************************************/
 /*                                                                 */
 /*                      ADOBE CONFIDENTIAL                         */
 /*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
@@ -123,7 +123,7 @@ prMALError exSDKStartup(exportStdParms *stdParmsP,
   prMALError result = malNoError;
 
   infoRecP->fileType = '3FUI';
-  copyConvertStringLiteralIntoUTF16(L"FFmAdobe (26w21b)", infoRecP->fileTypeName);
+  copyConvertStringLiteralIntoUTF16(L"FFmAdobe (26w21c)", infoRecP->fileTypeName);
   copyConvertStringLiteralIntoUTF16(L"mp4", infoRecP->fileTypeDefaultExtension);
 
   infoRecP->classID = 'FFEX';
