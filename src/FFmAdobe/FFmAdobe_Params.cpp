@@ -109,6 +109,12 @@ prMALError exSDKGenerateDefaultParams(exportStdParms* stdParms, exGenerateDefaul
     }
     AddInt(ADBEBasicVideoGroup, ADBEVideoFieldType, seqField.mInt32, 0, 3);
 
+    // Color range (default: tv = limited)
+    AddInt(ADBEBasicVideoGroup, FFMADOBE_COLOR_RANGE_ID, COLOR_RANGE_TV, 0, 1);
+
+    // Color space (default: bt709 for HD content)
+    AddInt(ADBEBasicVideoGroup, FFMADOBE_COLOR_SPACE_ID, COLOR_SPACE_BT709, 0, 4);
+
     // ============ AUDIO TAB ============
     copyConvertStringLiteralIntoUTF16(BASIC_AUDIO_GROUP_NAME, tmp);
     ps->AddParamGroup(exID, mg, ADBETopParamGroup, ADBEAudioTabGroup, tmp, kPrFalse, kPrFalse, kPrFalse);
@@ -156,6 +162,8 @@ prMALError exSDKPostProcessParams(exportStdParms* stdParmsP, exPostProcessParams
     SetName(ADBEVideoAspect,          STR_PAR);
     SetName(ADBEVideoFPS,             STR_FRAME_RATE);
     SetName(ADBEVideoFieldType,       STR_FIELD_ORDER);
+    SetName(FFMADOBE_COLOR_RANGE_ID,  STR_COLOR_RANGE);
+    SetName(FFMADOBE_COLOR_SPACE_ID,  STR_COLOR_SPACE);
     SetName(ADBEBasicAudioGroup,      BASIC_AUDIO_GROUP_NAME);
     SetName(ADBEAudioRatePerSecond,   STR_SAMPLE_RATE);
     SetName(ADBEAudioNumChannels,     STR_CHANNEL_TYPE);
@@ -211,6 +219,30 @@ prMALError exSDKPostProcessParams(exportStdParms* stdParmsP, exPostProcessParams
         exOneParamValueRec v; v.intValue = chs[i];
         copyConvertStringLiteralIntoUTF16(chStr[i], tmp);
         ps->AddConstrainedValuePair(exID, 0, ADBEAudioNumChannels, &v, tmp);
+    }
+
+    // Color range constrained values
+    {
+        int ranges[]              = {COLOR_RANGE_TV,         COLOR_RANGE_PC};
+        const wchar_t* rangeStr[] = {STR_COLOR_RANGE_TV,     STR_COLOR_RANGE_PC};
+        ps->ClearConstrainedValues(exID, 0, FFMADOBE_COLOR_RANGE_ID);
+        for (int i = 0; i < 2; i++) {
+            exOneParamValueRec v; v.intValue = ranges[i];
+            copyConvertStringLiteralIntoUTF16(rangeStr[i], tmp);
+            ps->AddConstrainedValuePair(exID, 0, FFMADOBE_COLOR_RANGE_ID, &v, tmp);
+        }
+    }
+
+    // Color space constrained values
+    {
+        int spaces[]              = {COLOR_SPACE_BT709,         COLOR_SPACE_BT601_625,         COLOR_SPACE_BT601_525,         COLOR_SPACE_BT2020,         COLOR_SPACE_SRGB};
+        const wchar_t* spaceStr[] = {STR_COLOR_SPACE_BT709,     STR_COLOR_SPACE_BT601_625,     STR_COLOR_SPACE_BT601_525,     STR_COLOR_SPACE_BT2020,     STR_COLOR_SPACE_SRGB};
+        ps->ClearConstrainedValues(exID, 0, FFMADOBE_COLOR_SPACE_ID);
+        for (int i = 0; i < 5; i++) {
+            exOneParamValueRec v; v.intValue = spaces[i];
+            copyConvertStringLiteralIntoUTF16(spaceStr[i], tmp);
+            ps->AddConstrainedValuePair(exID, 0, FFMADOBE_COLOR_SPACE_ID, &v, tmp);
+        }
     }
 
     return result;

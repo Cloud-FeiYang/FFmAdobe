@@ -593,6 +593,25 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     numAudioChannels = GetNumberOfAudioChannels(channelTypeInt);
   }
 
+  // ==== Color range & color space params ====
+  // Map our int enum values to FFmpeg argument strings
+  exParamValues colorRangeVal, colorSpaceVal;
+  mySettings->exportParamSuite->GetParamValue(exID, 0, FFMADOBE_COLOR_RANGE_ID, &colorRangeVal);
+  mySettings->exportParamSuite->GetParamValue(exID, 0, FFMADOBE_COLOR_SPACE_ID, &colorSpaceVal);
+
+  const wchar_t* colorRangeArgs[] = { L"tv", L"pc" };
+  const wchar_t* colorSpaceArgs[] = { L"bt709", L"bt470bg", L"smpte170m", L"bt2020nc", L"srgb" };
+  int crIdx = colorRangeVal.value.intValue;
+  int csIdx = colorSpaceVal.value.intValue;
+  if (crIdx < 0 || crIdx > 1)  crIdx = 0;
+  if (csIdx < 0 || csIdx > 4)  csIdx = 0;
+  std::wstring colorRangeArg  = std::wstring(L"-color_range ")  + colorRangeArgs[crIdx];
+  std::wstring colorSpaceArg  = std::wstring(L"-colorspace ")   + colorSpaceArgs[csIdx];
+  std::wstring colorTransferArg; // match transfer function to colorspace
+  // Set -color_trc to the industry-standard value for each colorspace
+  const wchar_t* transferArgs[] = { L"bt709", L"gamma28", L"smpte170m", L"arib-std-b67", L"iec61966-2-1" };
+  colorTransferArg = std::wstring(L"-color_trc ") + transferArgs[csIdx];
+
   PrTime exportDuration = exportInfoP->endTime - exportInfoP->startTime;
 
   // ==== Create unique named pipe names using process ID ====
@@ -771,6 +790,9 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   }
 
   std::wstring cmd;
+  // Color metadata flags (output-side, placed before output file)
+  std::wstring colorFlags = L" " + colorRangeArg + L" " + colorSpaceArg + L" " + colorTransferArg;
+
   if (hasAudio) {
     std::wstring wSR = std::to_wstring((int)audioSampleRate);
     std::wstring wNCh = std::to_wstring(numAudioChannels);
@@ -781,6 +803,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
          + L" -f f32le -ar " + wSR + L" -ac " + wNCh
          + L" -i \\\\.\\pipe\\ffmpeg_audio_" + std::to_wstring(pid)
          + L" -vf \"" + vfArg + L"\" " + vEncArgs + afArg + L" " + aEncArgs
+         + colorFlags
          + L" \"" + outputPathW + L"\"";
   } else {
     cmd = ffmpegExe + L" -y";
@@ -788,6 +811,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     cmd += L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH + L" -r " + wFps
          + L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid)
          + L" -vf \"" + vfArg + L"\" " + vEncArgs
+         + colorFlags
          + L" \"" + outputPathW + L"\"";
   }
   // ==== Launch FFmpeg via CreateProcessW for Unicode path support ====
