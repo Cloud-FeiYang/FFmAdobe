@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define MyAppName      "FFmAdobe"
-#define MyAppVersion   "26w20c"
+#define MyAppVersion   "26w20d"
 #define MyAppPublisher "FFmAdobe Project"
 #define MyAppURL       "https://github.com/Cloud-FeiYang/FFmAdobe"
 
@@ -181,10 +181,10 @@ end;
 
 function DefaultFFUIDir: String;
 begin
-  if PrevFFUIDir <> '' then
+  if (PrevFFUIDir <> '') and (Pos('Program Files', PrevFFUIDir) = 0) then
     Result := PrevFFUIDir
   else
-    Result := ExpandConstant('{autopf}\FFmAdobe\FFmpegFreeUI');
+    Result := ExpandConstant('{localappdata}\FFmAdobe\FFmpegFreeUI');
 end;
 
 // ---- {code:} getters ----
