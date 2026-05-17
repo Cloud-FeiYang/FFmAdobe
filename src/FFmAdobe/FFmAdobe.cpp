@@ -1,4 +1,4 @@
-/*******************************************************************/
+﻿/*******************************************************************/
 /*                                                                 */
 /*                      ADOBE CONFIDENTIAL                         */
 /*                   _ _ _ _ _ _ _ _ _ _ _ _ _                     */
@@ -123,7 +123,7 @@ prMALError exSDKStartup(exportStdParms *stdParmsP,
   prMALError result = malNoError;
 
   infoRecP->fileType = '3FUI';
-  copyConvertStringLiteralIntoUTF16(L"FFmAdobe (26w20c)", infoRecP->fileTypeName);
+  copyConvertStringLiteralIntoUTF16(L"FFmAdobe (26w20e)", infoRecP->fileTypeName);
   copyConvertStringLiteralIntoUTF16(L"mp4", infoRecP->fileTypeDefaultExtension);
 
   infoRecP->classID = 'FFEX';
@@ -383,7 +383,26 @@ prMALError RenderAndWriteAllVideo(exDoExportRec *exportInfoP, float progress,
 // Helper: wide path to std::wstring (no conversion needed, just copy)
 static std::wstring PrPathToWString(const prUTF16Char* wstr, csSDK_int32 len) {
   if (!wstr || len <= 0) return L"";
-  return std::wstring(wstr, wstr + len - 1); // len includes null terminator
+  return std::wstring(wstr, wstr + len - 1);
+}
+
+// Watchdog thread: unblocks ConnectNamedPipe if FFmpeg exits early
+struct WatchdogCtx {
+  HANDLE       hProcess;
+  std::wstring videoPipe;
+  std::wstring audioPipe;
+};
+static DWORD WINAPI WatchdogThread(LPVOID param) {
+  WatchdogCtx* ctx = reinterpret_cast<WatchdogCtx*>(param);
+  WaitForSingleObject(ctx->hProcess, INFINITE);
+  HANDLE hc = CreateFileW(ctx->videoPipe.c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+  if (hc != INVALID_HANDLE_VALUE) CloseHandle(hc);
+  if (!ctx->audioPipe.empty()) {
+    hc = CreateFileW(ctx->audioPipe.c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (hc != INVALID_HANDLE_VALUE) CloseHandle(hc);
+  }
+  delete ctx;
+  return 0;
 }
 
 // Audio writer thread context
@@ -397,7 +416,7 @@ struct AudioThreadContext {
   int                 channelTypeInt;
   float               audioSampleRate;
   int                 numAudioChannels;
-  HANDLE              hAudioPipe;   // named pipe server handle (write end)
+  HANDLE              hAudioPipe;
   volatile bool       aborted;
 };
 
@@ -583,11 +602,42 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   std::wstring afArg;
   if (!aFilters.empty()) afArg = L" -af \"" + aFilters + L"\"";
 
+  // ==== Resolve ffmpeg.exe full path so AME can find it ====
+  wchar_t ffmpegFullPath[MAX_PATH] = {};
+  if (!SearchPathW(NULL, L"ffmpeg.exe", L".exe", MAX_PATH, ffmpegFullPath, NULL)) {
+    // SearchPathW failed — try common Scoop/winget locations as fallback
+    const wchar_t* fallbacks[] = {
+      L"D:\\Scoop\\Applications\\ffmpeg\\current\\bin\\ffmpeg.exe",
+      L"D:\\Scoop\\Applications\\ffmpeg-full\\current\\bin\\ffmpeg.exe",
+      L"C:\\ffmpeg\\bin\\ffmpeg.exe",
+      nullptr
+    };
+    bool found = false;
+    for (int i = 0; fallbacks[i]; i++) {
+      if (GetFileAttributesW(fallbacks[i]) != INVALID_FILE_ATTRIBUTES) {
+        wcsncpy(ffmpegFullPath, fallbacks[i], MAX_PATH - 1);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      MessageBoxW(NULL,
+        L"FFmpeg not found.\n\n"
+        L"Please install FFmpeg and ensure it is in the system PATH.\n"
+        L"Download from: https://ffmpeg.org/download.html",
+        L"FFmAdobe Export Error", MB_OK | MB_ICONERROR);
+      CloseHandle(hVideoPipe);
+      if (hAudioPipe != INVALID_HANDLE_VALUE) CloseHandle(hAudioPipe);
+      return exportReturn_ErrOther;
+    }
+  }
+  std::wstring ffmpegExe = std::wstring(L"\"") + ffmpegFullPath + L"\"";
+
   std::wstring cmd;
   if (hasAudio) {
     std::wstring wSR = std::to_wstring((int)audioSampleRate);
     std::wstring wNCh = std::to_wstring(numAudioChannels);
-    cmd = L"ffmpeg.exe -y";
+    cmd = ffmpegExe + L" -y";
     if (!extraInputArgs.empty()) cmd += L" " + extraInputArgs;
     cmd += L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH + L" -r " + wFps
          + L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid)
@@ -596,7 +646,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
          + L" -vf \"" + vfArg + L"\" " + vEncArgs + afArg + L" " + aEncArgs
          + L" \"" + outputPathW + L"\"";
   } else {
-    cmd = L"ffmpeg.exe -y";
+    cmd = ffmpegExe + L" -y";
     if (!extraInputArgs.empty()) cmd += L" " + extraInputArgs;
     cmd += L" -f rawvideo -pix_fmt bgra -s " + wW + L"x" + wH + L" -r " + wFps
          + L" -i \\\\.\\pipe\\ffmpeg_video_" + std::to_wstring(pid)
@@ -620,6 +670,16 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     return exportReturn_ErrOther;
   }
 
+  // ==== Watchdog: unblocks ConnectNamedPipe if FFmpeg exits early ====
+  HANDLE hWatchdogThread = NULL;
+  {
+    WatchdogCtx* wdCtx = new WatchdogCtx();
+    wdCtx->hProcess  = piProcInfo.hProcess;
+    wdCtx->videoPipe = videoPipeName;
+    wdCtx->audioPipe = hasAudio ? audioPipeName : L"";
+    hWatchdogThread = CreateThread(NULL, 0, WatchdogThread, wdCtx, 0, NULL);
+  }
+
   // ==== Start audio thread BEFORE connecting video pipe ====
   HANDLE hAudioThread = NULL;
   AudioThreadContext audioCtx = {};
@@ -638,7 +698,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     hAudioThread = CreateThread(NULL, 0, AudioWriterThread, &audioCtx, 0, NULL);
   }
 
-  // ==== Connect video pipe (blocks until FFmpeg opens it) ====
+  // ==== Connect video pipe (blocks until FFmpeg opens it or watchdog unblocks) ====
   ConnectNamedPipe(hVideoPipe, NULL);
 
   // ==== Render and pipe VIDEO frames ====
@@ -714,6 +774,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   WaitForSingleObject(piProcInfo.hProcess, INFINITE);
   mySettings->exportProgressSuite->UpdateProgressPercent(exID, 1.0f);
 
+  if (hWatchdogThread) { WaitForSingleObject(hWatchdogThread, 5000); CloseHandle(hWatchdogThread); }
   CloseHandle(piProcInfo.hProcess);
   CloseHandle(piProcInfo.hThread);
 
