@@ -241,7 +241,8 @@ Public Class Form1
         Dim newDir = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Suzu")
         If Not IO.Directory.Exists(oldDir) Then Return
         If Not IO.Directory.Exists(newDir) Then IO.Directory.CreateDirectory(newDir)
-        For Each name In {"premiere_preset.json", "premiere_preset_simplified.json"}
+        Dim presetFiles As String() = {"premiere_preset.json", "premiere_preset_simplified.json"}
+        For Each name As String In presetFiles
             Dim src = IO.Path.Combine(oldDir, name)
             Dim dst = IO.Path.Combine(newDir, name)
             If IO.File.Exists(src) AndAlso Not IO.File.Exists(dst) Then
