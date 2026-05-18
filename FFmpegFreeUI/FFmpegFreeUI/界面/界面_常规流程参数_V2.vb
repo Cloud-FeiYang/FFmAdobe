@@ -917,8 +917,7 @@ Public Class 界面_常规流程参数_V2
     ''' </summary>
     Public Sub PremiereMode保存并退出()
         Try
-            Dim dir = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FFmAdobe")
-            If Not IO.Directory.Exists(dir) Then IO.Directory.CreateDirectory(dir)
+            Dim dir = Form1.SuzuAppDataDir()
             Dim presetPath = IO.Path.Combine(dir, "premiere_preset.json")
             Dim a As New 预设数据类型
             预设管理.储存预设(a, Me)

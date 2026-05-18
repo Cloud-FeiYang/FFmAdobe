@@ -1,6 +1,8 @@
 #pragma once
 #include <SDK_File.h>
 #include <windows.h>
+#include <shlobj.h>
+#include <string>
 
 // ==== FFmpegFreeUI integration params ====
 #define FFMPEGFREEUI_TAB_ID         "FFmpegFreeUITab"
@@ -9,8 +11,8 @@
 #define FFMPEGFREEUI_PRESET_PATH_ID "FFmpegFreeUIPresetPath"
 
 // ==== New color params ====
-#define FFMADOBE_COLOR_RANGE_ID     "FFmAdobeColorRange"
-#define FFMADOBE_COLOR_SPACE_ID     "FFmAdobeColorSpace"
+#define SUZU_COLOR_RANGE_ID     "SuzuColorRange"
+#define SUZU_COLOR_SPACE_ID     "SuzuColorSpace"
 
 // ==== Color range values ====
 #define COLOR_RANGE_TV   0   // tv / limited (16-235)
@@ -105,6 +107,30 @@ inline const wchar_t* LStr(const wchar_t* zh, const wchar_t* en) {
 #define STR_COLOR_SPACE_BT601_525 LStr(L"BT.601 NTSC (525\u7EBF)",         L"BT.601 NTSC (525-line)")
 #define STR_COLOR_SPACE_BT2020    LStr(L"BT.2020 (\u8D85\u9AD8\u6E05/HDR)",L"BT.2020 (UHD/HDR)")
 #define STR_COLOR_SPACE_SRGB      L"sRGB"
+
+// ==== AppData migration (FFmAdobe -> Suzu) ====
+inline void MigrateAppDataFromFFmAdobe() {
+    wchar_t appData[MAX_PATH] = {};
+    if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appData) != S_OK)
+        return;
+    const std::wstring oldDir = std::wstring(appData) + L"\\FFmAdobe";
+    const std::wstring newDir = std::wstring(appData) + L"\\Suzu";
+    if (GetFileAttributesW(oldDir.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return;
+    CreateDirectoryW(newDir.c_str(), NULL);
+    const wchar_t* presetFiles[] = {
+        L"premiere_preset.json",
+        L"premiere_preset_simplified.json",
+    };
+    for (const wchar_t* name : presetFiles) {
+        const std::wstring src = oldDir + L"\\" + name;
+        const std::wstring dst = newDir + L"\\" + name;
+        if (GetFileAttributesW(src.c_str()) != INVALID_FILE_ATTRIBUTES &&
+            GetFileAttributesW(dst.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            CopyFileW(src.c_str(), dst.c_str(), FALSE);
+        }
+    }
+}
 
 // ==== Function declarations ====
 prMALError exSDKGenerateDefaultParams(

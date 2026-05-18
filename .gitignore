@@ -28,6 +28,9 @@ Makefile
 installer/staging/
 installer/output/
 
+# === Logo asset tooling ===
+assets/node_modules/
+
 # === .NET build outputs (PremierePresetConverter) ===
 src/PremierePresetConverter/bin/
 src/PremierePresetConverter/obj/

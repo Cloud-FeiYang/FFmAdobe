@@ -1,4 +1,4 @@
-#include "FFmAdobe_Params.h"
+#include "Suzu_Params.h"
 #include <windows.h>
 #include <shlobj.h>
 #include <commdlg.h>
@@ -110,10 +110,10 @@ prMALError exSDKGenerateDefaultParams(exportStdParms* stdParms, exGenerateDefaul
     AddInt(ADBEBasicVideoGroup, ADBEVideoFieldType, seqField.mInt32, 0, 3);
 
     // Color range (default: pc = full)
-    AddInt(ADBEBasicVideoGroup, FFMADOBE_COLOR_RANGE_ID, COLOR_RANGE_PC, 0, 1);
+    AddInt(ADBEBasicVideoGroup, SUZU_COLOR_RANGE_ID, COLOR_RANGE_PC, 0, 1);
 
     // Color space (default: bt709 for HD content)
-    AddInt(ADBEBasicVideoGroup, FFMADOBE_COLOR_SPACE_ID, COLOR_SPACE_BT709, 0, 4);
+    AddInt(ADBEBasicVideoGroup, SUZU_COLOR_SPACE_ID, COLOR_SPACE_BT709, 0, 4);
 
     // ============ AUDIO TAB ============
     copyConvertStringLiteralIntoUTF16(BASIC_AUDIO_GROUP_NAME, tmp);
@@ -162,8 +162,8 @@ prMALError exSDKPostProcessParams(exportStdParms* stdParmsP, exPostProcessParams
     SetName(ADBEVideoAspect,          STR_PAR);
     SetName(ADBEVideoFPS,             STR_FRAME_RATE);
     SetName(ADBEVideoFieldType,       STR_FIELD_ORDER);
-    SetName(FFMADOBE_COLOR_RANGE_ID,  STR_COLOR_RANGE);
-    SetName(FFMADOBE_COLOR_SPACE_ID,  STR_COLOR_SPACE);
+    SetName(SUZU_COLOR_RANGE_ID,  STR_COLOR_RANGE);
+    SetName(SUZU_COLOR_SPACE_ID,  STR_COLOR_SPACE);
     SetName(ADBEBasicAudioGroup,      BASIC_AUDIO_GROUP_NAME);
     SetName(ADBEAudioRatePerSecond,   STR_SAMPLE_RATE);
     SetName(ADBEAudioNumChannels,     STR_CHANNEL_TYPE);
@@ -225,11 +225,11 @@ prMALError exSDKPostProcessParams(exportStdParms* stdParmsP, exPostProcessParams
     {
         int ranges[]              = {COLOR_RANGE_TV,         COLOR_RANGE_PC};
         const wchar_t* rangeStr[] = {STR_COLOR_RANGE_TV,     STR_COLOR_RANGE_PC};
-        ps->ClearConstrainedValues(exID, 0, FFMADOBE_COLOR_RANGE_ID);
+        ps->ClearConstrainedValues(exID, 0, SUZU_COLOR_RANGE_ID);
         for (int i = 0; i < 2; i++) {
             exOneParamValueRec v; v.intValue = ranges[i];
             copyConvertStringLiteralIntoUTF16(rangeStr[i], tmp);
-            ps->AddConstrainedValuePair(exID, 0, FFMADOBE_COLOR_RANGE_ID, &v, tmp);
+            ps->AddConstrainedValuePair(exID, 0, SUZU_COLOR_RANGE_ID, &v, tmp);
         }
     }
 
@@ -237,11 +237,11 @@ prMALError exSDKPostProcessParams(exportStdParms* stdParmsP, exPostProcessParams
     {
         int spaces[]              = {COLOR_SPACE_BT709,         COLOR_SPACE_BT601_625,         COLOR_SPACE_BT601_525,         COLOR_SPACE_BT2020,         COLOR_SPACE_SRGB};
         const wchar_t* spaceStr[] = {STR_COLOR_SPACE_BT709,     STR_COLOR_SPACE_BT601_625,     STR_COLOR_SPACE_BT601_525,     STR_COLOR_SPACE_BT2020,     STR_COLOR_SPACE_SRGB};
-        ps->ClearConstrainedValues(exID, 0, FFMADOBE_COLOR_SPACE_ID);
+        ps->ClearConstrainedValues(exID, 0, SUZU_COLOR_SPACE_ID);
         for (int i = 0; i < 5; i++) {
             exOneParamValueRec v; v.intValue = spaces[i];
             copyConvertStringLiteralIntoUTF16(spaceStr[i], tmp);
-            ps->AddConstrainedValuePair(exID, 0, FFMADOBE_COLOR_SPACE_ID, &v, tmp);
+            ps->AddConstrainedValuePair(exID, 0, SUZU_COLOR_SPACE_ID, &v, tmp);
         }
     }
 
@@ -306,6 +306,8 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
     if (strcmp(rec->buttonParamIdentifier, FFMPEGFREEUI_CONFIGURE_BTN) != 0)
         return result;
 
+    MigrateAppDataFromFFmAdobe();
+
     // ==== Resolve FFmpegFreeUI.exe: same-dir first, then registry fallback ====
     std::wstring ffuiExePath;
     std::wstring pluginDir;
@@ -325,13 +327,20 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
             ffuiExePath = sameDir;
         } else {
             HKEY hKey = NULL;
-            if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\FFmAdobe", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-                wchar_t regPath[MAX_PATH] = {};
-                DWORD sz = sizeof(regPath); DWORD type = REG_SZ;
-                if (RegQueryValueExW(hKey, L"FFmpegFreeUIPath", NULL, &type, (LPBYTE)regPath, &sz) == ERROR_SUCCESS)
-                    ffuiExePath = regPath;
-                RegCloseKey(hKey);
-            }
+            auto readFfuiFromRegistry = [&](const wchar_t* subkey) {
+                HKEY hKey = NULL;
+                if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+                    wchar_t regPath[MAX_PATH] = {};
+                    DWORD sz = sizeof(regPath);
+                    DWORD type = REG_SZ;
+                    if (RegQueryValueExW(hKey, L"FFmpegFreeUIPath", NULL, &type, (LPBYTE)regPath, &sz) == ERROR_SUCCESS)
+                        ffuiExePath = regPath;
+                    RegCloseKey(hKey);
+                }
+            };
+            readFfuiFromRegistry(L"SOFTWARE\\Suzu");
+            if (ffuiExePath.empty())
+                readFfuiFromRegistry(L"SOFTWARE\\FFmAdobe");
         }
     }
 
@@ -340,8 +349,8 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
     if (ffuiExePath.empty() || GetFileAttributesW(ffuiExePath.c_str()) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(mainWnd,
             L"FFmpegFreeUI.exe not found.\n\n"
-            L"Please install FFmpegFreeUI via the FFmAdobe installer,\n"
-            L"or place it in the same folder as FFmAdobe.prm.",
+            L"Please install FFmpegFreeUI via the Suzu installer,\n"
+            L"or place it in the same folder as Suzu.prm.",
             L"FFmpegFreeUI Not Found", MB_OK | MB_ICONERROR);
         return exportReturn_ErrOther;
     }
@@ -379,7 +388,8 @@ prMALError exSDKParamButton(exportStdParms* stdParmsP, exParamButtonRec* rec)
     // ==== Step 2: Auto-convert the saved preset ====
     wchar_t appData[MAX_PATH];
     SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appData);
-    std::wstring outDir = std::wstring(appData) + L"\\FFmAdobe";
+    MigrateAppDataFromFFmAdobe();
+    std::wstring outDir = std::wstring(appData) + L"\\Suzu";
     CreateDirectoryW(outDir.c_str(), NULL);
     std::wstring nativePresetPath = outDir + L"\\premiere_preset.json";
     std::wstring simplifiedPath   = outDir + L"\\premiere_preset_simplified.json";

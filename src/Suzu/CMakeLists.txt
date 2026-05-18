@@ -1,16 +1,16 @@
-set(LIBRARY_NAME "FFmAdobe")
+set(LIBRARY_NAME "Suzu")
 
 # ============================
 # Source Files
 # ============================
 set(Source_Files
-    "FFmAdobe.cpp"
-    "FFmAdobe_Params.cpp"
+    "Suzu.cpp"
+    "Suzu_Params.cpp"
 )
 
 set(Header_Files
-    "FFmAdobe.h"
-    "FFmAdobe_Params.h"
+    "Suzu.h"
+    "Suzu_Params.h"
 )
 
 set(Utility_Files
@@ -20,7 +20,7 @@ set(Utility_Files
     "${ADOBE_PP_SDK}/Examples/Utils/SDK_Segment_Utils.h"
 )
 
-set(Resource_Files "FFmAdobe.rc")
+set(Resource_Files "Suzu.rc")
 
 source_group("Source Files"           FILES ${Source_Files})
 source_group("Header Files"           FILES ${Header_Files})

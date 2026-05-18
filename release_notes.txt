@@ -1,4 +1,11 @@
-﻿## FFmAdobe 26w21d (Dev Branch)
+﻿## Suzu 26w21e (Dev Branch)
+
+### 更新内容
+- **品牌重命名 FFmAdobe → Suzu**：插件产物、安装器、注册表与 AppData 路径统一为 Suzu；保留从旧版 FFmAdobe 配置与数据的自动迁移。
+- **安装包与资源**：安装脚本更名为 `Suzu.iss`，新增 Suzu 图标与品牌资源（`assets/suzu.*`）。
+- **FFmpegFreeUI 集成**：更新内置 FFmpegFreeUI 界面与图标，AppData 目录迁移逻辑与 Suzu 命名对齐。
+
+## Suzu 26w21d
 
 ### 更新内容
 - **极致优化核心性能与体积**：开启了 MSVC 的全局链接时代码生成 (LTCG / Whole Program Optimization)，并应用了最大化速度 (/O2) 与最大化体积缩减 (/OPT:REF, /OPT:ICF)。插件核心文件大幅瘦身至 **91 KB**，并在跨模块函数调用上获得了无额外开销的极致性能。

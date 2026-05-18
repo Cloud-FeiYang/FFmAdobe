@@ -236,8 +236,29 @@ Public Class Form1
         End Try
     End Sub
 
+    Public Shared Sub MigrateAppDataFromFFmAdobe()
+        Dim oldDir = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FFmAdobe")
+        Dim newDir = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Suzu")
+        If Not IO.Directory.Exists(oldDir) Then Return
+        If Not IO.Directory.Exists(newDir) Then IO.Directory.CreateDirectory(newDir)
+        For Each name In {"premiere_preset.json", "premiere_preset_simplified.json"}
+            Dim src = IO.Path.Combine(oldDir, name)
+            Dim dst = IO.Path.Combine(newDir, name)
+            If IO.File.Exists(src) AndAlso Not IO.File.Exists(dst) Then
+                IO.File.Copy(src, dst, False)
+            End If
+        Next
+    End Sub
+
+    Public Shared Function SuzuAppDataDir() As String
+        MigrateAppDataFromFFmAdobe()
+        Dim dir = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Suzu")
+        If Not IO.Directory.Exists(dir) Then IO.Directory.CreateDirectory(dir)
+        Return dir
+    End Function
+
     Public Sub 进入Premiere模式()
-        Me.Text = "FFmAdobe 参数配置"
+        Me.Text = "Suzu 参数配置"
         ' 隐藏无关Tab，只保留参数面板和设置
         Dim 要隐藏的Tabs As New List(Of TabPage) From {
             TabPage起始页面, TabPage编码队列, TabPage准备文件,
@@ -253,7 +274,7 @@ Public Class Form1
         ' 禁用文件拖放到编码队列
         ListView1.AllowDrop = False
         ' 加载上次的预设（如果存在）
-        Dim presetPath = IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FFmAdobe", "premiere_preset.json")
+        Dim presetPath = IO.Path.Combine(SuzuAppDataDir(), "premiere_preset.json")
         If IO.File.Exists(presetPath) Then
             Try
                 Dim a = System.Text.Json.JsonSerializer.Deserialize(Of 预设数据类型)(IO.File.ReadAllText(presetPath))

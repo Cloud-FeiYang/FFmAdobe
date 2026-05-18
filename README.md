@@ -1,4 +1,6 @@
-# FFmAdobe — FFmpeg Exporter Plugin for Adobe Premiere Pro
+# Suzu — FFmpeg Exporter Plugin for Adobe Premiere Pro
+
+<p align="center"><img src="assets/suzu.svg" width="120" alt="Suzu logo" /></p>
 
 A native Premiere Pro exporter plugin (`.prm`) that pipes raw video and audio directly to FFmpeg for encoding, with a configurable **FFmpegFreeUI** front-end.
 
@@ -21,7 +23,7 @@ Premiere Pro                       PremierePresetConverter
     │  → user selects saved preset         │  (video_args, audio_args, filters...)
     │  → converter runs automatically      │
     │                                      ▼
-    │                            %APPDATA%\FFmAdobe\premiere_preset.json
+    │                            %APPDATA%\Suzu\premiere_preset.json
     │                                      │
     ├─ Main thread (video frames)          │
     │     └──► \\.\pipe\ffmpeg_video_{PID}  │
@@ -60,8 +62,8 @@ Build and run the Inno Setup installer:
 
 ```powershell
 cd installer
-iscc FFmAdobe.iss
-# Output: installer/output/FFmAdobe-1.0.0-x64-Setup.exe
+iscc Suzu.iss
+# Output: installer/output/Suzu-26w21e-x64-Setup.exe
 ```
 
 The installer provides:
@@ -71,16 +73,16 @@ The installer provides:
 
 ### Option 2: Manual
 
-Copy to `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe\`:
+Copy to `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\Suzu\`:
 
 ```
-FFmpegExporter.prm           # Plugin
+Suzu.prm                     # Plugin
 PremierePresetConverter.exe   # Preset converter
 ```
 
 Place FFmpegFreeUI anywhere and set registry key:
 ```
-HKLM\SOFTWARE\FFmAdobe\FFmpegFreeUIPath = "C:\path\to\FFmpegFreeUI.exe"
+HKLM\SOFTWARE\Suzu\FFmpegFreeUIPath = "C:\path\to\FFmpegFreeUI.exe"
 ```
 
 ## Preset Format
@@ -104,7 +106,7 @@ Default (no preset configured): `H.264 CRF 18 fast + AAC 320kbps`.
 ## Project Structure
 
 ```
-FFmAdobe/
+Suzu/
 ├── CMakeLists.txt
 ├── README.md
 ├── .gitignore
@@ -112,16 +114,16 @@ FFmAdobe/
 │   └── ...
 ├── src/
 │   ├── configure.h.in
-│   ├── FFmpegExporter/                  ← C++ Premiere Pro plugin
-│   │   ├── FFmpegExporter.cpp           # Export logic (pipe architecture)
-│   │   ├── FFmpegExporter_Params.cpp    # UI params & FFmpegFreeUI launcher
-│   │   ├── FFmpegExporter_Params.h      # Parameter IDs
+│   ├── Suzu/                            ← C++ Premiere Pro plugin
+│   │   ├── Suzu.cpp                     # Export logic (pipe architecture)
+│   │   ├── Suzu_Params.cpp              # UI params & FFmpegFreeUI launcher
+│   │   ├── Suzu_Params.h                # Parameter IDs
 │   │   └── ...
 │   └── PremierePresetConverter/         ← .NET preset converter (subtree-external)
 │       ├── PremierePresetConverter.vbproj
 │       └── Program.vb
 └── installer/
-    ├── FFmAdobe.iss                     # Inno Setup script
+    ├── Suzu.iss                     # Inno Setup script
     ├── ChineseSimplified.isl            # Chinese language file
     └── License.rtf
 ```

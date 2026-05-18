@@ -43,8 +43,8 @@
    zal			3/3/2008
 */
 
-#include "FFmAdobe.h"
-#include "FFmAdobe_Params.h"
+#include "Suzu.h"
+#include "Suzu_Params.h"
 
 #include <windows.h>
 #include <shlobj.h>
@@ -123,7 +123,7 @@ prMALError exSDKStartup(exportStdParms *stdParmsP,
   prMALError result = malNoError;
 
   infoRecP->fileType = '3FUI';
-  copyConvertStringLiteralIntoUTF16(L"FFmAdobe (26w21d)", infoRecP->fileTypeName);
+  copyConvertStringLiteralIntoUTF16(L"Suzu (26w21e)", infoRecP->fileTypeName);
   copyConvertStringLiteralIntoUTF16(L"mp4", infoRecP->fileTypeDefaultExtension);
 
   infoRecP->classID = 'FFEX';
@@ -442,7 +442,7 @@ static int ValidateFFmpegConfig(
   // Write validation log path
   wchar_t ad[MAX_PATH] = {};
   SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
-  std::wstring valLogPath = std::wstring(ad) + L"\\FFmAdobe\\ffmpeg_validation.log";
+  std::wstring valLogPath = std::wstring(ad) + L"\\Suzu\\ffmpeg_validation.log";
 
   SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
   HANDLE hLog = CreateFileW(valLogPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
@@ -542,6 +542,7 @@ static DWORD WINAPI AudioWriterThread(LPVOID lpParam) {
 
 // The main export function - named pipes to a single ffmpeg process, no intermediate files
 prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
+  MigrateAppDataFromFFmAdobe();
   prMALError result = malNoError;
   csSDK_uint32 exID = exportInfoP->exporterPluginID;
   ExportSettings *mySettings =
@@ -569,10 +570,10 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   {
     wchar_t ad[MAX_PATH] = {};
     SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
-    std::wstring logPath = std::wstring(ad) + L"\\FFmAdobe\\export_debug.log";
+    std::wstring logPath = std::wstring(ad) + L"\\Suzu\\export_debug.log";
     FILE* fp = _wfopen(logPath.c_str(), L"a, ccs=UTF-8");
     if (fp) {
-      fwprintf(fp, L"[FFmAdobe] outputPathW = '%s'\n", outputPathW.c_str());
+      fwprintf(fp, L"[Suzu] outputPathW = '%s'\n", outputPathW.c_str());
       fclose(fp);
     }
   }
@@ -598,8 +599,8 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   // ==== Color range & color space params ====
   // Map our int enum values to FFmpeg argument strings
   exParamValues colorRangeVal, colorSpaceVal;
-  mySettings->exportParamSuite->GetParamValue(exID, 0, FFMADOBE_COLOR_RANGE_ID, &colorRangeVal);
-  mySettings->exportParamSuite->GetParamValue(exID, 0, FFMADOBE_COLOR_SPACE_ID, &colorSpaceVal);
+  mySettings->exportParamSuite->GetParamValue(exID, 0, SUZU_COLOR_RANGE_ID, &colorRangeVal);
+  mySettings->exportParamSuite->GetParamValue(exID, 0, SUZU_COLOR_SPACE_ID, &colorSpaceVal);
 
   const wchar_t* colorRangeArgs[] = { L"tv", L"pc" };
   const wchar_t* colorSpaceArgs[] = { L"bt709", L"bt470bg", L"smpte170m", L"bt2020nc", L"srgb" };
@@ -653,7 +654,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     if (presetPath.empty()) {
       wchar_t ad[MAX_PATH];
       SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
-      presetPath = std::wstring(ad) + L"\\FFmAdobe\\premiere_preset_simplified.json";
+      presetPath = std::wstring(ad) + L"\\Suzu\\premiere_preset_simplified.json";
     }
   }
 
@@ -742,7 +743,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
         L"FFmpeg not found.\n\n"
         L"Please install FFmpeg and ensure it is in the system PATH.\n"
         L"Download from: https://ffmpeg.org/download.html",
-        L"FFmAdobe Export Error", MB_OK | MB_ICONERROR);
+        L"Suzu Export Error", MB_OK | MB_ICONERROR);
       CloseHandle(hVideoPipe);
       if (hAudioPipe != INVALID_HANDLE_VALUE) CloseHandle(hAudioPipe);
       return exportReturn_ErrOther;
@@ -758,7 +759,7 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
       // Read validation log for specific error message
       wchar_t ad2[MAX_PATH] = {};
       SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad2);
-      std::wstring valLogPath = std::wstring(ad2) + L"\\FFmAdobe\\ffmpeg_validation.log";
+      std::wstring valLogPath = std::wstring(ad2) + L"\\Suzu\\ffmpeg_validation.log";
       std::wstring detail;
       HANDLE hVLog = CreateFileW(valLogPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
                                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -780,11 +781,11 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
         }
         CloseHandle(hVLog);
       }
-      std::wstring msg = L"FFmAdobe: Export configuration is not supported by your FFmpeg installation.\n\n";
+      std::wstring msg = L"Suzu: Export configuration is not supported by your FFmpeg installation.\n\n";
       if (!detail.empty()) msg += L"FFmpeg reported:\n" + detail + L"\n\n";
       msg += L"Please open Configure and select an encoder supported by your FFmpeg version.\n";
-      msg += L"(Log saved to: %APPDATA%\\FFmAdobe\\ffmpeg_validation.log)";
-      MessageBoxW(NULL, msg.c_str(), L"FFmAdobe: Invalid Configuration", MB_OK | MB_ICONERROR);
+      msg += L"(Log saved to: %APPDATA%\\Suzu\\ffmpeg_validation.log)";
+      MessageBoxW(NULL, msg.c_str(), L"Suzu: Invalid Configuration", MB_OK | MB_ICONERROR);
       CloseHandle(hVideoPipe);
       if (hAudioPipe != INVALID_HANDLE_VALUE) CloseHandle(hAudioPipe);
       return 1;
@@ -820,13 +821,13 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
   // Redirect FFmpeg stderr to a log file for diagnostics
   wchar_t adPath[MAX_PATH] = {};
   SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, adPath);
-  std::wstring ffmpegLogPath = std::wstring(adPath) + L"\\FFmAdobe\\ffmpeg_last.log";
+  std::wstring ffmpegLogPath = std::wstring(adPath) + L"\\Suzu\\ffmpeg_last.log";
 
   // Write full cmd to debug log (split to avoid fwprintf wchar_t limits)
   {
-    FILE* fp = _wfopen((std::wstring(adPath) + L"\\FFmAdobe\\export_debug.log").c_str(), L"a, ccs=UTF-8");
+    FILE* fp = _wfopen((std::wstring(adPath) + L"\\Suzu\\export_debug.log").c_str(), L"a, ccs=UTF-8");
     if (fp) {
-      fwprintf(fp, L"[FFmAdobe] full cmd:\n");
+      fwprintf(fp, L"[Suzu] full cmd:\n");
       // Write in 200-char chunks
       const wchar_t* p = cmd.c_str();
       size_t remaining = cmd.size();
@@ -981,11 +982,11 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
     GetExitCodeProcess(piProcInfo.hProcess, &exitCode);
     wchar_t ad[MAX_PATH] = {};
     SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, ad);
-    std::wstring logPath = std::wstring(ad) + L"\\FFmAdobe\\export_debug.log";
+    std::wstring logPath = std::wstring(ad) + L"\\Suzu\\export_debug.log";
     FILE* fp = _wfopen(logPath.c_str(), L"a, ccs=UTF-8");
     if (fp) {
-      fwprintf(fp, L"[FFmAdobe] cmd = %s\n", cmd.c_str());
-      fwprintf(fp, L"[FFmAdobe] ffmpeg exit code = %lu\n\n", exitCode);
+      fwprintf(fp, L"[Suzu] cmd = %s\n", cmd.c_str());
+      fwprintf(fp, L"[Suzu] ffmpeg exit code = %lu\n\n", exitCode);
       fclose(fp);
     }
   }

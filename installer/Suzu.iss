@@ -1,14 +1,14 @@
 ﻿; ============================================================
-; FFmAdobe Installer - Inno Setup Script
+; Suzu Installer - Inno Setup Script
 ; ============================================================
 ; New install:  Welcome → Components → Plugin Path → FFUI Path → Ready
 ; Maintenance:  Welcome → Repair/Modify/Uninstall → (depends on choice)
 ; ============================================================
 
-#define MyAppName      "FFmAdobe"
-#define MyAppVersion   "26w21d"
-#define MyAppPublisher "FFmAdobe Project"
-#define MyAppURL       "https://github.com/Cloud-FeiYang/FFmAdobe"
+#define MyAppName      "Suzu"
+#define MyAppVersion   "26w21e"
+#define MyAppPublisher "Suzu Project"
+#define MyAppURL       "https://github.com/Cloud-FeiYang/Suzu"
 
 ; ============================================================
 ; [Setup]
@@ -19,17 +19,17 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-DefaultDirName={autopf}\FFmAdobe
+DefaultDirName={autopf}\Suzu
 DefaultGroupName={#MyAppName}
 OutputDir=output
-OutputBaseFilename=FFmAdobe-{#MyAppVersion}-x64-Setup
+OutputBaseFilename=Suzu-{#MyAppVersion}-x64-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 WizardStyle=modern
-SetupIconFile=compiler:SetupClassicIcon.ico
+SetupIconFile=..\assets\suzu.ico
 DisableProgramGroupPage=yes
 DisableDirPage=yes
 ; Allow same version to be reinstalled (repair/modify)
@@ -54,7 +54,7 @@ Name: "custom";  Description: "自定义 (Custom)"; Flags: iscustom
 ; [Components]
 ; ============================================================
 [Components]
-Name: "plugin";    Description: "FFmAdobe 插件 (.prm)  —  Premiere Pro 导出器"; Types: full plugin custom; Flags: fixed
+Name: "plugin";    Description: "Suzu 插件 (.prm)  —  Premiere Pro 导出器"; Types: full plugin custom; Flags: fixed
 Name: "converter"; Description: "PremierePresetConverter  —  预设转换工具（随插件安装）"; Types: full plugin custom
 Name: "ffui";      Description: "FFmpegFreeUI  —  编码参数配置前端"; Types: full custom
 
@@ -63,7 +63,7 @@ Name: "ffui";      Description: "FFmpegFreeUI  —  编码参数配置前端"; T
 ; ============================================================
 [Files]
 ; Plugin
-Source: "staging\Plugin\FFmAdobe.prm";              DestDir: "{code:GetPluginDir}"; Flags: ignoreversion; Components: plugin
+Source: "staging\Plugin\Suzu.prm";              DestDir: "{code:GetPluginDir}"; Flags: ignoreversion; Components: plugin
 Source: "staging\Plugin\PremierePresetConverter.exe"; DestDir: "{code:GetPluginDir}"; Flags: ignoreversion; Components: converter
 ; FFmpegFreeUI
 Source: "staging\FFmpegFreeUI\FFmpegFreeUI.exe";            DestDir: "{code:GetFFUIDir}"; Flags: ignoreversion; Components: ffui
@@ -86,16 +86,16 @@ Name: "{code:GetFFUIDir}";   Components: ffui
 ; [Registry]
 ; ============================================================
 [Registry]
-Root: HKLM; Subkey: "SOFTWARE\FFmAdobe"; ValueType: string; ValueName: "FFmpegFreeUIPath"; ValueData: "{code:GetFFUIDir}\FFmpegFreeUI.exe"; Flags: uninsdeletevalue; Components: ffui
-Root: HKLM; Subkey: "SOFTWARE\FFmAdobe"; ValueType: string; ValueName: "PluginPath"; ValueData: "{code:GetPluginDir}"; Flags: uninsdeletevalue; Components: plugin
-Root: HKLM; Subkey: "SOFTWARE\FFmAdobe"; Flags: uninsdeletekeyifempty
+Root: HKLM; Subkey: "SOFTWARE\Suzu"; ValueType: string; ValueName: "FFmpegFreeUIPath"; ValueData: "{code:GetFFUIDir}\FFmpegFreeUI.exe"; Flags: uninsdeletevalue; Components: ffui
+Root: HKLM; Subkey: "SOFTWARE\Suzu"; ValueType: string; ValueName: "PluginPath"; ValueData: "{code:GetPluginDir}"; Flags: uninsdeletevalue; Components: plugin
+Root: HKLM; Subkey: "SOFTWARE\Suzu"; Flags: uninsdeletekeyifempty
 
 ; ============================================================
 ; [Icons]
 ; ============================================================
 [Icons]
 Name: "{group}\FFmpegFreeUI";  Filename: "{code:GetFFUIDir}\FFmpegFreeUI.exe"; Components: ffui
-Name: "{group}\卸载 FFmAdobe";  Filename: "{uninstallexe}"
+Name: "{group}\卸载 Suzu";  Filename: "{uninstallexe}"
 
 ; ============================================================
 ; [UninstallDelete]
@@ -103,7 +103,7 @@ Name: "{group}\卸载 FFmAdobe";  Filename: "{uninstallexe}"
 [UninstallDelete]
 Type: dirifempty;     Name: "{code:GetPluginDir}"
 Type: filesandordirs; Name: "{code:GetFFUIDir}"
-Type: filesandordirs; Name: "{commonappdata}\FFmAdobe"
+Type: filesandordirs; Name: "{commonappdata}\Suzu"
 
 ; ============================================================
 ; [Code] — Maintenance mode + custom directory pages
@@ -151,9 +151,13 @@ var
 begin
   PrevPluginDir := '';
   PrevFFUIDir := '';
-  if RegQueryStringValue(HKLM, 'SOFTWARE\FFmAdobe', 'PluginPath', sVal) then
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Suzu', 'PluginPath', sVal) then
+    PrevPluginDir := sVal
+  else if RegQueryStringValue(HKLM, 'SOFTWARE\FFmAdobe', 'PluginPath', sVal) then
     PrevPluginDir := sVal;
-  if RegQueryStringValue(HKLM, 'SOFTWARE\FFmAdobe', 'FFmpegFreeUIPath', sVal) then
+  if RegQueryStringValue(HKLM, 'SOFTWARE\Suzu', 'FFmpegFreeUIPath', sVal) then
+    PrevFFUIDir := ExtractFilePath(sVal)
+  else if RegQueryStringValue(HKLM, 'SOFTWARE\FFmAdobe', 'FFmpegFreeUIPath', sVal) then
     PrevFFUIDir := ExtractFilePath(sVal);
 end;
 
@@ -176,7 +180,7 @@ begin
   if PrevPluginDir <> '' then
     Result := PrevPluginDir
   else
-    Result := ExpandConstant('{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\FFmAdobe');
+    Result := ExpandConstant('{autopf}\Adobe\Common\Plug-ins\7.0\MediaCore\Suzu');
 end;
 
 function DefaultFFUIDir: String;
@@ -184,7 +188,7 @@ begin
   if (PrevFFUIDir <> '') and (Pos('Program Files', PrevFFUIDir) = 0) then
     Result := PrevFFUIDir
   else
-    Result := ExpandConstant('{localappdata}\FFmAdobe\FFmpegFreeUI');
+    Result := ExpandConstant('{localappdata}\Suzu\FFmpegFreeUI');
 end;
 
 // ---- {code:} getters ----
@@ -222,8 +226,8 @@ begin
   // --- Maintenance page (shown only if already installed) ---
   MaintenancePage := CreateCustomPage(
     wpWelcome,
-    'FFmAdobe 已安装 (Maintenance)',
-    '检测到 FFmAdobe ' + PrevVersion + ' 已安装，请选择操作。');
+    'Suzu 已安装 (Maintenance)',
+    '检测到 Suzu ' + PrevVersion + ' 已安装，请选择操作。');
 
   lbl := TNewStaticText.Create(MaintenancePage);
   lbl.Parent := MaintenancePage.Surface;
@@ -255,15 +259,15 @@ begin
   RadioUninstall.Top := RadioModify.Top + RadioModify.Height + 12;
   RadioUninstall.Left := 12;
   RadioUninstall.Width := MaintenancePage.SurfaceWidth - 24;
-  RadioUninstall.Caption := '卸载  —  完全移除 FFmAdobe';
+  RadioUninstall.Caption := '卸载  —  完全移除 Suzu';
   RadioUninstall.Font.Size := 10;
 
   // --- Plugin directory page ---
   PluginDirPage := CreateInputDirPage(
     wpSelectComponents,
     '插件安装目录 (Plugin Install Path)',
-    '请选择 FFmAdobe 插件的安装目录。',
-    '插件文件 (FFmAdobe.prm) 将安装到以下目录。' + #13#10 +
+    '请选择 Suzu 插件的安装目录。',
+    '插件文件 (Suzu.prm) 将安装到以下目录。' + #13#10 +
     '如果你的 Premiere Pro 安装在非默认位置，请修改为对应的 MediaCore 目录。' + #13#10#13#10 +
     '默认路径适用于标准安装的 Premiere Pro。',
     False, '');
@@ -330,12 +334,12 @@ begin
     if RadioUninstall.Checked then
     begin
       // Run uninstaller and abort setup
-      if MsgBox('确定要完全卸载 FFmAdobe 吗？' + #13#10 + '用户预设数据也将被删除。',
+      if MsgBox('确定要完全卸载 Suzu 吗？' + #13#10 + '用户预设数据也将被删除。',
                 mbConfirmation, MB_YESNO) = IDYES then
       begin
         if PrevUninstallStr <> '' then
           Exec(PrevUninstallStr, '/NORESTART', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
-        MsgBox('FFmAdobe 已卸载。', mbInformation, MB_OK);
+        MsgBox('Suzu 已卸载。', mbInformation, MB_OK);
       end;
       Result := False;  // Stay on page / exit setup
       WizardForm.Close;
@@ -400,7 +404,7 @@ begin
   if WizardIsComponentSelected('ffui') then
   begin
     S := S + '注册表:' + NewLine;
-    S := S + Space + 'HKLM\SOFTWARE\FFmAdobe\FFmpegFreeUIPath' + NewLine;
+    S := S + Space + 'HKLM\SOFTWARE\Suzu\FFmpegFreeUIPath' + NewLine;
     S := S + Space + '  = ' + GetFFUIDir('') + '\FFmpegFreeUI.exe' + NewLine;
   end;
 
