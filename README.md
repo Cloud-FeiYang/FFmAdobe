@@ -1,6 +1,6 @@
 # Suzu — FFmpeg Exporter Plugin for Adobe Premiere Pro
 
-<p align="center"><img src="assets/suzu.svg" width="120" alt="Suzu logo" /></p>
+<p align="center"><img src="assets/suzu.png" width="120" alt="Suzu logo" /></p>
 
 A native Premiere Pro exporter plugin (`.prm`) that pipes raw video and audio directly to FFmpeg for encoding, with a configurable **FFmpegFreeUI** front-end.
 
