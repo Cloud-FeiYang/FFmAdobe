@@ -874,6 +874,8 @@ Public Class 预设管理
                 Select Case a.视频参数_编码器_具体编码
                     Case "hevc_nvenc", "h264_nvenc"
                         视频参数 &= $"-rc vbr_hq "
+                    Case "av1_nvenc"
+                        视频参数 &= $"-rc vbr -tune hq "
                     Case "av1_amf"
                         视频参数 &= $"-rc hqvbr -quality high_quality "
                     Case "hevc_amf", "h264_amf"

@@ -405,6 +405,55 @@ static DWORD WINAPI WatchdogThread(LPVOID param) {
   return 0;
 }
 
+// ==== NVENC preset normalization ====
+static bool EncArgsUseNvenc(const std::wstring& vEncArgs) {
+  return vEncArgs.find(L"av1_nvenc") != std::wstring::npos ||
+         vEncArgs.find(L"hevc_nvenc") != std::wstring::npos ||
+         vEncArgs.find(L"h264_nvenc") != std::wstring::npos;
+}
+
+static bool EncArgsUseAv1Nvenc(const std::wstring& vEncArgs) {
+  return vEncArgs.find(L"av1_nvenc") != std::wstring::npos;
+}
+
+// Fixes incompatible NVENC flags copied from other codecs (e.g. hevc -rc vbr_hq on av1_nvenc).
+static void NormalizeNvencEncoderArgs(std::wstring& vEncArgs) {
+  if (!EncArgsUseNvenc(vEncArgs)) return;
+  size_t pos = 0;
+  while (EncArgsUseAv1Nvenc(vEncArgs) &&
+         (pos = vEncArgs.find(L"vbr_hq", pos)) != std::wstring::npos) {
+    vEncArgs.replace(pos, 6, L"vbr");
+    pos += 3;
+  }
+}
+
+// NVENC has minimum/even dimension requirements; AV1 NVENC is stricter (~144px) than HEVC.
+static void NvencValidationDimensions(std::wstring& wW, std::wstring& wH,
+                                      const std::wstring& vEncArgs) {
+  if (!EncArgsUseNvenc(vEncArgs)) return;
+  int w = _wtoi(wW.c_str());
+  int h = _wtoi(wH.c_str());
+  if (w <= 0) w = 1920;
+  if (h <= 0) h = 1080;
+  const int kMin = EncArgsUseAv1Nvenc(vEncArgs) ? 144 : 128;
+  if (w < kMin) w = kMin;
+  if (h < kMin) h = kMin;
+  w &= ~1;
+  h &= ~1;
+  if (w < kMin) w = kMin + (kMin & 1);
+  if (h < kMin) h = kMin + (kMin & 1);
+  wW = std::to_wstring(w);
+  wH = std::to_wstring(h);
+}
+
+static std::string WideToUtf8(const std::wstring& w) {
+  if (w.empty()) return {};
+  int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), NULL, 0, NULL, NULL);
+  std::string s(n, '\0');
+  WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), &s[0], n, NULL, NULL);
+  return s;
+}
+
 // ==== Pre-export configuration validation ====
 // Runs a fast dummy encode (0.1s of lavfi input) to verify that the user's
 // encoder args and filters are actually supported by the local FFmpeg build.
@@ -420,10 +469,16 @@ static int ValidateFFmpegConfig(
     const std::wstring& wH,
     bool hasAudio)
 {
-  // Build dummy command using lavfi sources to avoid needing real input
+  (void)extraInputArgs;
+  std::wstring valW = wW;
+  std::wstring valH = wH;
+  NvencValidationDimensions(valW, valH, vEncArgs);
+
+  // Build dummy command using lavfi sources to avoid needing real input.
+  // Do not pass extraInputArgs here: flags like -hwaccel cuda apply to pipe/raw
+  // inputs in the real export, not to lavfi generators, and cause false failures.
   std::wstring validCmd = ffmpegExe + L" -y";
-  if (!extraInputArgs.empty()) validCmd += L" " + extraInputArgs;
-  validCmd += L" -f lavfi -i color=c=black:s=" + wW + L"x" + wH + L":d=0.1";
+  validCmd += L" -f lavfi -i color=c=black:s=" + valW + L"x" + valH + L":d=0.1";
   if (hasAudio)
     validCmd += L" -f lavfi -i anullsrc=r=48000:cl=stereo:d=0.1";
 
@@ -452,6 +507,9 @@ static int ValidateFFmpegConfig(
   ZeroMemory(&pi, sizeof(pi)); ZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);
   if (hLog != INVALID_HANDLE_VALUE) {
+    std::string header = WideToUtf8(L"[Suzu] validation command:\r\n" + validCmd + L"\r\n\r\n");
+    DWORD wr = 0;
+    WriteFile(hLog, header.data(), (DWORD)header.size(), &wr, NULL);
     si.hStdError = hLog; si.hStdOutput = hLog;
     si.dwFlags |= STARTF_USESTDHANDLES;
   }
@@ -711,6 +769,8 @@ prMALError exSDKExport(exportStdParms *stdParmsP, exDoExportRec *exportInfoP) {
 
   std::wstring wW = std::to_wstring(width.value.intValue);
   std::wstring wH = std::to_wstring(height.value.intValue);
+
+  NormalizeNvencEncoderArgs(vEncArgs);
   char fpsBuf[32]; snprintf(fpsBuf, sizeof(fpsBuf), "%.6f", fps);
   std::string sFps(fpsBuf);
   std::wstring wFps(sFps.begin(), sFps.end());

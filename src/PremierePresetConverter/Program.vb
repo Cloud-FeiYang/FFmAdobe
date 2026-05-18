@@ -167,6 +167,7 @@ Module Program
             Case "VBR HQ"
                 Select Case codec
                     Case "hevc_nvenc", "h264_nvenc" : s &= "-rc vbr_hq "
+                    Case "av1_nvenc" : s &= "-rc vbr -tune hq "
                     Case "av1_amf" : s &= "-rc hqvbr -quality high_quality "
                     Case "hevc_amf", "h264_amf" : s &= "-rc hqvbr -quality quality "
                     Case "av1_qsv", "hevc_qsv", "h264_qsv" : s &= "-rc la_icq "
